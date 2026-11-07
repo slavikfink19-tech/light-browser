@@ -40,6 +40,7 @@ import java.util.Locale
 
 class MainActivity : Activity() {
     private lateinit var web: WebView
+    private lateinit var adBlockEngine: AdBlockEngine
     private lateinit var address: EditText
     private var fullscreen: View? = null
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
@@ -66,6 +67,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        adBlockEngine = AdBlockEngine(applicationContext)
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.BLACK)
@@ -133,6 +135,7 @@ class MainActivity : Activity() {
         web.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 currentSiteHost = Uri.parse(url ?: "").host?.lowercase(Locale.ROOT)
+                if (isAdBlockActive()) view?.postDelayed({ if (isAdBlockActive()) applyCosmeticFilters() }, 400)
             }
             override fun onPageFinished(view: WebView?, url: String?) {
                 address.setText(url ?: "")
@@ -140,9 +143,9 @@ class MainActivity : Activity() {
                 if (!url.isNullOrBlank() && url.startsWith("https://")) addHistory(url)
             }
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-                val host = request?.url?.host?.lowercase(Locale.ROOT) ?: return null
-                if (isAdBlockActive() && blockedHosts.any { host == it || host.endsWith(".$it") }) {
-                    return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0)))
+                if (isAdBlockActive() && adBlockEngine.shouldBlock(
+                        request, currentSiteHost, prefs.getBoolean("adblock_strong", false))) {
+                    return adBlockEngine.emptyResponse()
                 }
                 return null
             }
