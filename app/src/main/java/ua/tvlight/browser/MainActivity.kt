@@ -8,6 +8,8 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.Paint
 import android.widget.FrameLayout
+import android.widget.TextView
+import android.widget.HorizontalScrollView
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.WindowManager
@@ -42,6 +44,8 @@ class MainActivity : Activity() {
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
     private lateinit var root: LinearLayout
     private lateinit var cursorOverlay: View
+    private lateinit var page: FrameLayout
+    private lateinit var homePanel: LinearLayout
     private var cursorMode = false
     private var cursorX = 300f
     private var cursorY = 300f
@@ -76,7 +80,8 @@ class MainActivity : Activity() {
             }
             bar.addView(button, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
-        navButton("‹") { if (web.canGoBack()) web.goBack() }
+        navButton("⌂") { showHome() }
+        navButton("‹") { if (web.canGoBack()) web.goBack() else showHome() }
         navButton("›") { if (web.canGoForward()) web.goForward() }
         navButton("↻") { web.reload() }
         address = EditText(this).apply {
@@ -156,7 +161,7 @@ class MainActivity : Activity() {
                 Toast.makeText(this, "Не вдалося завантажити файл", Toast.LENGTH_SHORT).show()
             }
         }
-        val page = FrameLayout(this)
+        page = FrameLayout(this)
         page.addView(web, FrameLayout.LayoutParams(-1, -1))
         cursorOverlay = object : View(this) {
             private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -177,9 +182,121 @@ class MainActivity : Activity() {
         cursorOverlay.isClickable = false
         cursorOverlay.isFocusable = false
         root.addView(page, LinearLayout.LayoutParams(-1, 0, 1f))
+        homePanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(12, 12, 12, 12)
+            setBackgroundColor(Color.rgb(5, 14, 31))
+        }
+        root.addView(homePanel, LinearLayout.LayoutParams(-1, 0, 1f))
         web.requestFocus()
         setContentView(root)
-        navigate(prefs.getString("home", "https://www.google.com") ?: "https://www.google.com")
+        showHome()
+    }
+
+    private fun showHome() {
+        page.visibility = View.GONE
+        homePanel.visibility = View.VISIBLE
+        homePanel.removeAllViews()
+        fun heading(label: String) {
+            homePanel.addView(TextView(this).apply {
+                text = label
+                textSize = 19f
+                setTextColor(Color.WHITE)
+                setTypeface(null, Typeface.BOLD)
+                setPadding(8, 14, 8, 12)
+            })
+        }
+        heading("TV Light Browser")
+        val search = EditText(this).apply {
+            hint = "Пошук або введіть адресу сайту..."
+            setSingleLine(true)
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.LTGRAY)
+            setPadding(22, 14, 22, 14)
+            background = rounded(Color.rgb(20, 45, 78), Color.rgb(39, 174, 255))
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_GO
+            setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true }
+        }
+        homePanel.addView(search, LinearLayout.LayoutParams(-1, -2))
+        heading("Швидкий доступ")
+        val tiles = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+        val tileRow = LinearLayout(this)
+        fun tile(label: String, color: Int, action: () -> Unit) {
+            tileRow.addView(Button(this).apply {
+                text = label
+                textSize = 16f
+                isAllCaps = false
+                setTextColor(Color.WHITE)
+                background = rounded(color, Color.rgb(55, 183, 255))
+                setOnClickListener { action() }
+            }, LinearLayout.LayoutParams((154 * resources.displayMetrics.density).toInt(),
+                (106 * resources.displayMetrics.density).toInt()).apply { setMargins(5, 5, 5, 5) })
+        }
+        tile("Фільми", Color.rgb(66, 29, 111)) { showEntries("bookmarks", "Сайти для фільмів") }
+        tile("Серіали", Color.rgb(9, 65, 120)) { showEntries("bookmarks", "Сайти для серіалів") }
+        tile("ТБ онлайн", Color.rgb(4, 95, 70)) { showEntries("bookmarks", "ТБ-закладки") }
+        tile("Завантаження", Color.rgb(108, 75, 12)) { openDownloads() }
+        tile("Налаштування", Color.rgb(18, 58, 112)) { showMenu() }
+        tiles.addView(tileRow)
+        homePanel.addView(tiles)
+        heading("★ Швидкі закладки")
+        val shortcuts = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+        val shortcutRow = LinearLayout(this)
+        val bookmarks = entries("bookmarks").take(12)
+        bookmarks.forEach { url ->
+            val host = Uri.parse(url).host ?: url
+            shortcutRow.addView(Button(this).apply {
+                text = host.removePrefix("www.")
+                isAllCaps = false
+                setTextColor(Color.WHITE)
+                background = rounded(Color.rgb(22, 41, 69), Color.rgb(49, 99, 157))
+                setOnClickListener { navigate(url) }
+            }, LinearLayout.LayoutParams((170 * resources.displayMetrics.density).toInt(), -2).apply { setMargins(4, 4, 4, 4) })
+        }
+        shortcutRow.addView(Button(this).apply {
+            text = "+ Додати"
+            isAllCaps = false
+            setOnClickListener { promptBookmark() }
+        })
+        shortcuts.addView(shortcutRow)
+        homePanel.addView(shortcuts)
+        val browse = Button(this).apply {
+            text = "Відкрити браузер"
+            isAllCaps = false
+            setOnClickListener { navigate(prefs.getString("home", "https://www.google.com") ?: "https://www.google.com") }
+        }
+        homePanel.addView(browse)
+    }
+
+    private fun rounded(fill: Int, stroke: Int): GradientDrawable =
+        GradientDrawable().apply {
+            setColor(fill)
+            cornerRadius = 16f * resources.displayMetrics.density
+            setStroke((2 * resources.displayMetrics.density).toInt(), stroke)
+        }
+
+    private fun promptBookmark() {
+        val input = EditText(this).apply { hint = "https://example.com" }
+        AlertDialog.Builder(this).setTitle("Додати закладку")
+            .setView(input)
+            .setPositiveButton("Додати") { _, _ ->
+                val value = input.text.toString().trim()
+                if (value.isNotEmpty()) {
+                    val url = if (value.startsWith("https://")) value else "https://$value"
+                    val items = entries("bookmarks")
+                    if (!items.contains(url)) items.add(0, url)
+                    saveEntries("bookmarks", items)
+                    showHome()
+                }
+            }.setNegativeButton("Скасувати", null).show()
+    }
+
+    private fun openDownloads() {
+        try {
+            startActivity(android.content.Intent(DownloadManager.ACTION_VIEW_DOWNLOADS))
+        } catch (_: Exception) {
+            Toast.makeText(this, "Менеджер завантажень недоступний", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun entries(key: String): MutableList<String> =
@@ -248,6 +365,8 @@ class MainActivity : Activity() {
                 "https://www.google.com/search?q=" + URLEncoder.encode(input, "UTF-8")
             else -> "https://$input"
         }
+        homePanel.visibility = View.GONE
+        page.visibility = View.VISIBLE
         web.loadUrl(url)
     }
 
