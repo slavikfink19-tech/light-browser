@@ -3,6 +3,9 @@ package ua.tvlight.browser
 import android.app.Activity
 import android.os.Bundle
 import android.graphics.Color
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.widget.FrameLayout
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.WindowManager
@@ -36,6 +39,7 @@ class MainActivity : Activity() {
     private var fullscreen: View? = null
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
     private lateinit var root: LinearLayout
+    private lateinit var cursorOverlay: View
     private var cursorMode = false
     private var cursorX = 300f
     private var cursorY = 300f
@@ -83,7 +87,7 @@ class MainActivity : Activity() {
         tool("Закладки") { showBookmarks() }
         tool("Історія") { showHistory() }
         tool("Меню") { showMenu() }
-        tool("Курсор") { cursorMode = !cursorMode; Toast.makeText(this, if (cursorMode) "Курсор: стрілки — рух, OK — натискання" else "Звичайне керування", Toast.LENGTH_LONG).show() }
+        tool("Курсор") { cursorMode = !cursorMode; cursorOverlay.invalidate(); web.requestFocus(); Toast.makeText(this, if (cursorMode) "Курсор: стрілки — рух, OK — натискання" else "Звичайне керування", Toast.LENGTH_LONG).show() }
         root.addView(bar)
         root.addView(tools)
         web = WebView(this)
@@ -127,14 +131,34 @@ class MainActivity : Activity() {
                 request.setMimeType(mime)
                 request.addRequestHeader("User-Agent", userAgent ?: "")
                 request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, android.webkit.URLUtil.guessFileName(url, disposition, mime))
+                request.setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, android.webkit.URLUtil.guessFileName(url, disposition, mime))
                 (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
                 Toast.makeText(this, "Завантаження розпочато", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Toast.makeText(this, "Не вдалося завантажити файл", Toast.LENGTH_SHORT).show()
             }
         }
-        root.addView(web, LinearLayout.LayoutParams(-1, 0, 1f))
+        val page = FrameLayout(this)
+        page.addView(web, FrameLayout.LayoutParams(-1, -1))
+        cursorOverlay = object : View(this) {
+            private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.YELLOW
+                strokeWidth = 3f * resources.displayMetrics.density
+                style = Paint.Style.STROKE
+            }
+            override fun onDraw(canvas: Canvas) {
+                if (!cursorMode) return
+                val x = cursorX.coerceIn(0f, width.toFloat())
+                val y = cursorY.coerceIn(0f, height.toFloat())
+                canvas.drawCircle(x, y, 12f * resources.displayMetrics.density, paint)
+                canvas.drawLine(x - 18f, y, x + 18f, y, paint)
+                canvas.drawLine(x, y - 18f, x, y + 18f, paint)
+            }
+        }
+        page.addView(cursorOverlay, FrameLayout.LayoutParams(-1, -1))
+        cursorOverlay.isClickable = false
+        cursorOverlay.isFocusable = false
+        root.addView(page, LinearLayout.LayoutParams(-1, 0, 1f))
         web.requestFocus()
         setContentView(root)
         navigate(prefs.getString("home", "https://www.google.com") ?: "https://www.google.com")
@@ -239,7 +263,7 @@ class MainActivity : Activity() {
             }
             cursorX = cursorX.coerceIn(0f, web.width.toFloat())
             cursorY = cursorY.coerceIn(0f, web.height.toFloat())
-            web.invalidate()
+            cursorOverlay.invalidate()
             return true
         }
         return super.dispatchKeyEvent(event)
