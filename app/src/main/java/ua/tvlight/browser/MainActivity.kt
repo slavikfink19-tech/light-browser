@@ -60,28 +60,6 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.BLACK)
         }
-        val titleBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(16, 8, 16, 8)
-            background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(Color.rgb(9, 20, 45), Color.rgb(16, 48, 83), Color.rgb(8, 17, 38)))
-        }
-        val brand = android.widget.TextView(this).apply {
-            text = "◈  TV LIGHT BROWSER"
-            textSize = 19f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.rgb(108, 213, 255))
-            setPadding(8, 10, 8, 10)
-        }
-        titleBar.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
-        val status = android.widget.TextView(this).apply {
-            text = "● AdBlock"
-            textSize = 12f
-            setTextColor(Color.rgb(107, 236, 174))
-        }
-        titleBar.addView(status)
-        root.addView(titleBar)
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(Color.rgb(15, 29, 52))
@@ -241,7 +219,7 @@ class MainActivity : Activity() {
     private fun showHistory() = showEntries("history", "Історія")
 
     private fun showMenu() {
-        val options = arrayOf("AdBlock: увімкнути/вимкнути", "Зробити стартовою", "Очистити кеш", "Очистити історію", "Очистити cookies", "Очистити закладки")
+        val options = arrayOf(if (prefs.getBoolean("adblock", true)) "AdBlock: увімкнено (натисни, щоб вимкнути)" else "AdBlock: вимкнено (натисни, щоб увімкнути)", "Зробити стартовою", "Очистити кеш", "Очистити історію", "Очистити cookies", "Очистити закладки")
         AlertDialog.Builder(this).setTitle("Налаштування")
             .setItems(options) { _, index ->
                 when (index) {
