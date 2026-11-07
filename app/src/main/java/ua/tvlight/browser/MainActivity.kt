@@ -68,27 +68,9 @@ class MainActivity : Activity() {
     private val isTelevision by lazy { (resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION }
     private var cursorX = 300f
     private var cursorY = 300f
-    private var scrollDirection = 0
-    private val edgeScroll = object : Runnable {
-        override fun run() {
-            if (!cursorMode || page.visibility != View.VISIBLE || fullscreen != null || scrollDirection == 0) return
-            val dy = dp(16) * scrollDirection
-            web.scrollBy(0, dy)
-            cursorOverlay.postDelayed(this, 35L)
-        }
-    }
     private fun updateEdgeScroll() {
-        cursorOverlay.removeCallbacks(edgeScroll)
-        val margin = dp(28).toFloat()
-        scrollDirection = when {
-            !cursorMode || page.visibility != View.VISIBLE -> 0
-            cursorY <= margin -> -1
-            cursorY >= web.height - margin -> 1
-            else -> 0
-        }
-        if (scrollDirection != 0) cursorOverlay.post(edgeScroll)
+        // Scrolling only follows actual remote-control directional key presses.
     }
-
 
     private val prefs by lazy { getSharedPreferences("browser", Context.MODE_PRIVATE) }
     private val blockedHosts = setOf(
@@ -179,6 +161,9 @@ class MainActivity : Activity() {
                 fullscreen = view
                 fullscreenCallback = callback
                 root.visibility = View.GONE
+                view.isFocusable = true
+                view.isFocusableInTouchMode = true
+                view.requestFocus()
                 window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
                 addContentView(view, ViewGroup.LayoutParams(-1, -1))
             }
@@ -217,12 +202,12 @@ class MainActivity : Activity() {
                 val y = cursorY.coerceIn(0f, height.toFloat())
                 val arrow = android.graphics.Path().apply {
                     moveTo(x, y)
-                    lineTo(x, y + dp(27))
-                    lineTo(x + dp(7), y + dp(21))
-                    lineTo(x + dp(12), y + dp(32))
-                    lineTo(x + dp(18), y + dp(29))
-                    lineTo(x + dp(13), y + dp(18))
-                    lineTo(x + dp(23), y + dp(17))
+                    lineTo(x, y + dp(14))
+                    lineTo(x + dp(4), y + dp(11))
+                    lineTo(x + dp(6), y + dp(16))
+                    lineTo(x + dp(9), y + dp(15))
+                    lineTo(x + dp(7), y + dp(9))
+                    lineTo(x + dp(12), y + dp(9))
                     close()
                 }
                 canvas.drawPath(arrow, pointer)
@@ -938,6 +923,7 @@ class MainActivity : Activity() {
         (view.parent as? ViewGroup)?.removeView(view)
         fullscreen = null
         root.visibility = View.VISIBLE
+        web.requestFocus()
         window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
         fullscreenCallback?.onCustomViewHidden()
         fullscreenCallback = null
@@ -951,19 +937,19 @@ class MainActivity : Activity() {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_LEFT -> {
                     cursorX = (cursorX - step).coerceAtLeast(0f)
-                    if (cursorX <= edge) web.scrollBy(-dp(100), 0)
+                    if (cursorX <= edge) web.scrollBy(-dp(90), 0)
                 }
                 KeyEvent.KEYCODE_DPAD_RIGHT -> {
                     cursorX = (cursorX + step).coerceAtMost(web.width.toFloat())
-                    if (cursorX >= web.width - edge) web.scrollBy(dp(100), 0)
+                    if (cursorX >= web.width - edge) web.scrollBy(dp(90), 0)
                 }
                 KeyEvent.KEYCODE_DPAD_UP -> {
                     cursorY = (cursorY - step).coerceAtLeast(0f)
-                    
+                    if (cursorY <= edge) web.scrollBy(0, -dp(110))
                 }
                 KeyEvent.KEYCODE_DPAD_DOWN -> {
                     cursorY = (cursorY + step).coerceAtMost(web.height.toFloat())
-                    
+                    if (cursorY >= web.height - edge) web.scrollBy(0, dp(110))
                 }
                 KeyEvent.KEYCODE_PAGE_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN ->
                     web.scrollBy(0, (web.height * 0.8f).toInt())
@@ -1002,7 +988,6 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         closeFullscreen()
-        cursorOverlay.removeCallbacks(edgeScroll)
         web.stopLoading()
         web.webChromeClient = null
         web.webViewClient = WebViewClient()
