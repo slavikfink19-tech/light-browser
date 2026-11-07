@@ -1057,6 +1057,13 @@ class MainActivity : Activity() {
         fullscreenCallback = null
     }
 
+    private fun smoothWebScroll(dx: Int, dy: Int) {
+        // Native WebView scrolling is abrupt on TV remotes; use the page's smooth scroll.
+        web.evaluateJavascript(
+            "window.scrollBy({left: ${dx}, top: ${dy}, behavior: 'smooth'});", null
+        )
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val player = fullscreen
         val inMenu = player == null && homePanel.visibility == View.VISIBLE
@@ -1072,25 +1079,25 @@ class MainActivity : Activity() {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_LEFT -> {
                     cursorX = (cursorX - step).coerceAtLeast(0f)
-                    if (!inMenu && player == null && cursorX <= edge) web.scrollBy(-dp(90), 0)
+                    if (!inMenu && player == null && cursorX <= edge) smoothWebScroll(-dp(45), 0)
                 }
                 KeyEvent.KEYCODE_DPAD_RIGHT -> {
                     cursorX = (cursorX + step).coerceAtMost(width.toFloat())
-                    if (!inMenu && player == null && cursorX >= width - edge) web.scrollBy(dp(90), 0)
+                    if (!inMenu && player == null && cursorX >= width - edge) smoothWebScroll(dp(45), 0)
                 }
                 KeyEvent.KEYCODE_DPAD_UP ->
                     { cursorY = (cursorY - step).coerceAtLeast(0f)
-                      if (inMenu && cursorY <= edge) (homePanel.getChildAt(0) as? android.widget.ScrollView)?.scrollBy(0, -dp(110))
-                      else if (player == null && cursorY <= edge) web.scrollBy(0, -dp(110)) }
+                      if (inMenu && cursorY <= edge) (homePanel.getChildAt(0) as? android.widget.ScrollView)?.smoothScrollBy(0, -dp(55))
+                      else if (player == null && cursorY <= edge) smoothWebScroll(0, -dp(55)) }
                 KeyEvent.KEYCODE_DPAD_DOWN ->
                     { cursorY = (cursorY + step).coerceAtMost(height.toFloat())
-                      if (inMenu && cursorY >= height - edge) (homePanel.getChildAt(0) as? android.widget.ScrollView)?.scrollBy(0, dp(110))
-                      else if (player == null && cursorY >= height - edge) web.scrollBy(0, dp(110)) }
+                      if (inMenu && cursorY >= height - edge) (homePanel.getChildAt(0) as? android.widget.ScrollView)?.smoothScrollBy(0, dp(55))
+                      else if (player == null && cursorY >= height - edge) smoothWebScroll(0, dp(55)) }
                 KeyEvent.KEYCODE_PAGE_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN -> {
-                    if (player == null) web.scrollBy(0, (web.height * 0.8f).toInt())
+                    if (player == null) smoothWebScroll(0, (web.height * 0.4f).toInt())
                 }
                 KeyEvent.KEYCODE_PAGE_UP, KeyEvent.KEYCODE_CHANNEL_UP -> {
-                    if (player == null) web.scrollBy(0, -(web.height * 0.8f).toInt())
+                    if (player == null) smoothWebScroll(0, -(web.height * 0.4f).toInt())
                 }
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
                 KeyEvent.KEYCODE_NUMPAD_ENTER -> {
