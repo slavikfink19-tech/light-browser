@@ -315,7 +315,7 @@ class MainActivity : Activity() {
                 textSize = if (wide) 17f else 16f
                 elevation = dp(3).toFloat()
             }, GridLayout.LayoutParams().apply {
-                width = tileWidth
+                this.width = tileWidth
                 height = if (wide) dp(118) else dp(112)
                 setMargins(dp(3), dp(4), dp(3), dp(4))
             })
