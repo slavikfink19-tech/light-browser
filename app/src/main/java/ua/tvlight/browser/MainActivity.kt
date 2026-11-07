@@ -139,6 +139,7 @@ class MainActivity : Activity() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 currentSiteHost = Uri.parse(url ?: "").host?.lowercase(Locale.ROOT)
                 if (isAdBlockActive()) view?.postDelayed({ if (isAdBlockActive()) applyCosmeticFilters() }, 400)
+                if (isAdBlockActive()) view?.postDelayed({ if (isAdBlockActive()) applyCosmeticFilters() }, 1800)
             }
             override fun onPageFinished(view: WebView?, url: String?) {
                 address.setText(url ?: "")
@@ -453,21 +454,56 @@ class MainActivity : Activity() {
         val selectors = mutableListOf(
             "iframe[src*='doubleclick']", "iframe[src*='adservice']",
             "[id^='google_ads']", ".adsbygoogle", "[data-ad-slot]",
-            "a[href*='beton.ua'] img", "a[href*='beton.com.ua'] img"
+            "[class*='ad-banner']", "[class*='banner-ad']",
+            "[class*='popup-ad']", "[id*='popup-ad']",
+            "a[href*='beton.ua']", "a[href*='beton.com.ua']",
+            "a[href*='cosmolot']", "a[href*='cosmo-lot']"
         )
         if (prefs.getBoolean("adblock_strong", false)) {
             selectors.addAll(listOf(
                 "[class*='advertisement']", "[id*='advertisement']",
-                "[class*='ad-banner']", "[class*='ad_banner']",
-                "[class*='banner-ad']", "[class*='banner_ad']",
-                "[class*='popup-ad']", "[id*='popup-ad']",
-                "iframe[src*='ads']", "a[href*='beton.ua']",
-                "a[href*='beton.com.ua']"
+                "[class*='ad_banner']", "[class*='banner_ad']",
+                "iframe[src*='ads']", "[class*='popunder']",
+                "[id*='popunder']", "[class*='ad-overlay']"
             ))
         }
-        val css = selectors.joinToString(",") + "{display:none!important;visibility:hidden!important;max-height:0!important;}"
-        val script = "(function(){try{var id='tvlight-adblock-style';var el=document.getElementById(id);if(!el){el=document.createElement('style');el.id=id;(document.head||document.documentElement).appendChild(el);}el.textContent=" +
-            org.json.JSONObject.quote(css) + ";}catch(e){}})();"
+        val host = Uri.parse(web.url ?: "").host?.lowercase(Locale.ROOT) ?: ""
+        val siteRules = if (host == "uakino.best" || host.endsWith(".uakino.best")) listOf(
+            "a[href*='cosmolot']", "a[href*='cosmo-lot']",
+            "a[href*='beton']", "a[href*='casino']",
+            "[class*='banner']", "[id*='banner']",
+            "[class*='advert']", "[id*='advert']",
+            "[class*='popunder']", "[id*='popunder']",
+            "iframe[src*='adserver']"
+        ) else emptyList()
+        val css = (selectors + siteRules).distinct().joinToString(",") +
+            "{display:none!important;visibility:hidden!important;max-height:0!important;}"
+        val script = """
+            (function(){
+              try {
+                var id='tvlight-adblock-style';
+                var el=document.getElementById(id);
+                if(!el){el=document.createElement('style');el.id=id;(document.head||document.documentElement).appendChild(el);}
+                el.textContent=${org.json.JSONObject.quote(css)};
+                if(window.__tvlightAdObserver)return;
+                var selectors=${org.json.JSONArray((selectors + siteRules).distinct()).toString()};
+                var removeAds=function(){
+                  try {
+                    selectors.forEach(function(sel){
+                      document.querySelectorAll(sel).forEach(function(node){
+                        if(node.tagName==='VIDEO'||node.tagName==='SOURCE')return;
+                        node.style.setProperty('display','none','important');
+                      });
+                    });
+                  }catch(e){}
+                };
+                removeAds();
+                var observer=new MutationObserver(function(){removeAds();});
+                observer.observe(document.documentElement,{childList:true,subtree:true});
+                window.__tvlightAdObserver=observer;
+              }catch(e){}
+            })();
+        """.trimIndent()
         web.evaluateJavascript(script, null)
     }
 
