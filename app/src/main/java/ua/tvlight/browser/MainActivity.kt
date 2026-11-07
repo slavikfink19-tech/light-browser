@@ -12,6 +12,14 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.app.AlertDialog
+import android.content.Context
+import android.webkit.CookieManager
+import android.webkit.DownloadListener
+import android.app.DownloadManager
+import android.os.Environment
+import android.net.Uri
+import android.widget.Toast
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -26,9 +34,12 @@ class MainActivity : Activity() {
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
     private lateinit var root: LinearLayout
 
+    private val prefs by lazy { getSharedPreferences("browser", Context.MODE_PRIVATE) }
     private val blockedHosts = setOf(
         "doubleclick.net", "googlesyndication.com", "googleadservices.com",
-        "adnxs.com", "taboola.com", "outbrain.com", "popads.net"
+        "adnxs.com", "taboola.com", "outbrain.com", "popads.net",
+        "adsrvr.org", "criteo.com", "scorecardresearch.com", "pubmatic.com",
+        "rubiconproject.com", "openx.net", "smartadserver.com"
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -55,7 +66,19 @@ class MainActivity : Activity() {
         }
         bar.addView(address, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 5f))
         navButton("GO") { navigate(address.text.toString()) }
+        val tools = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        fun tool(label: String, action: () -> Unit) {
+            tools.addView(Button(this).apply {
+                text = label
+                setOnClickListener { action() }
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+        tool("★") { bookmark() }
+        tool("Закладки") { showBookmarks() }
+        tool("Історія") { showHistory() }
+        tool("Меню") { showMenu() }
         root.addView(bar)
+        root.addView(tools)
         web = WebView(this)
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
@@ -64,10 +87,11 @@ class MainActivity : Activity() {
         web.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 address.setText(url ?: "")
+                if (!url.isNullOrBlank() && url.startsWith("https://")) addHistory(url)
             }
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                 val host = request?.url?.host?.lowercase(Locale.ROOT) ?: return null
-                if (blockedHosts.any { host == it || host.endsWith(".$it") }) {
+                if (prefs.getBoolean("adblock", true) && blockedHosts.any { host == it || host.endsWith(".$it") }) {
                     return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0)))
                 }
                 return null
@@ -83,9 +107,78 @@ class MainActivity : Activity() {
             }
             override fun onHideCustomView() { closeFullscreen() }
         }
+        web.setDownloadListener { url, userAgent, disposition, mime, _ ->
+            try {
+                val request = DownloadManager.Request(Uri.parse(url))
+                request.setMimeType(mime)
+                request.addRequestHeader("User-Agent", userAgent ?: "")
+                request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, android.webkit.URLUtil.guessFileName(url, disposition, mime))
+                (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
+                Toast.makeText(this, "Завантаження розпочато", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this, "Не вдалося завантажити файл", Toast.LENGTH_SHORT).show()
+            }
+        }
         root.addView(web, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
-        navigate("https://www.google.com")
+        navigate(prefs.getString("home", "https://www.google.com") ?: "https://www.google.com")
+    }
+
+    private fun entries(key: String): MutableList<String> =
+        (prefs.getString(key, "") ?: "").lines().filter { it.isNotBlank() }.toMutableList()
+
+    private fun saveEntries(key: String, values: List<String>) {
+        prefs.edit().putString(key, values.take(100).joinToString("\\n")).apply()
+    }
+
+    private fun addHistory(url: String) {
+        val items = entries("history")
+        items.remove(url)
+        items.add(0, url)
+        saveEntries("history", items)
+    }
+
+    private fun bookmark() {
+        val url = web.url ?: return
+        val items = entries("bookmarks")
+        if (!items.contains(url)) items.add(0, url)
+        saveEntries("bookmarks", items)
+        Toast.makeText(this, "Додано в закладки", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showEntries(key: String, title: String) {
+        val items = entries(key)
+        if (items.isEmpty()) {
+            Toast.makeText(this, "Список порожній", Toast.LENGTH_SHORT).show()
+            return
+        }
+        AlertDialog.Builder(this).setTitle(title)
+            .setItems(items.toTypedArray()) { _, which -> navigate(items[which]) }
+            .setNegativeButton("Закрити", null).show()
+    }
+
+    private fun showBookmarks() = showEntries("bookmarks", "Закладки")
+    private fun showHistory() = showEntries("history", "Історія")
+
+    private fun showMenu() {
+        val options = arrayOf("AdBlock: увімкнути/вимкнути", "Зробити стартовою", "Очистити кеш", "Очистити історію", "Очистити cookies", "Очистити закладки")
+        AlertDialog.Builder(this).setTitle("Налаштування")
+            .setItems(options) { _, index ->
+                when (index) {
+                    0 -> {
+                        val next = !prefs.getBoolean("adblock", true)
+                        prefs.edit().putBoolean("adblock", next).apply()
+                        Toast.makeText(this, if (next) "AdBlock увімкнено" else "AdBlock вимкнено", Toast.LENGTH_SHORT).show()
+                        web.reload()
+                    }
+                    1 -> prefs.edit().putString("home", web.url ?: "https://www.google.com").apply()
+                    2 -> web.clearCache(true)
+                    3 -> saveEntries("history", emptyList())
+                    4 -> CookieManager.getInstance().removeAllCookies(null)
+                    5 -> saveEntries("bookmarks", emptyList())
+                }
+            }.setNegativeButton("Закрити", null).show()
     }
 
     private fun navigate(value: String) {
