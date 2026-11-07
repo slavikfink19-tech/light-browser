@@ -34,6 +34,8 @@ import android.widget.Toast
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.GridLayout
+import android.content.res.Configuration
 import java.io.ByteArrayInputStream
 import java.net.URLEncoder
 import java.util.Locale
@@ -74,19 +76,13 @@ class MainActivity : Activity() {
         }
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.rgb(15, 29, 52))
-            setPadding(4, 2, 4, 2)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), dp(7), dp(10), dp(7))
+            setBackgroundColor(Color.rgb(8, 22, 45))
         }
         fun navButton(label: String, action: () -> Unit) {
-            val button = Button(this).apply {
-                text = label
-                setTextColor(Color.WHITE)
-                textSize = 13f
-                isAllCaps = false
-                backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(24, 72, 119))
-                setOnClickListener { action() }
-            }
-            bar.addView(button, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            bar.addView(styledButton(label, Color.rgb(15, 44, 79), Color.rgb(39, 111, 169), action),
+                LinearLayout.LayoutParams(dp(44), dp(43)).apply { setMargins(dp(2), 0, dp(2), 0) })
         }
         navButton("⌂") { showHome() }
         navButton("‹") { if (web.canGoBack()) web.goBack() else showHome() }
@@ -95,31 +91,38 @@ class MainActivity : Activity() {
         address = EditText(this).apply {
             setSingleLine(true)
             hint = "Пошук або адреса сайту"
+            textSize = 14f
             setTextColor(Color.WHITE)
-            setHintTextColor(Color.LTGRAY)
+            setHintTextColor(Color.rgb(142, 175, 208))
+            setPadding(dp(13), 0, dp(8), 0)
+            background = rounded(Color.rgb(14, 38, 70), Color.rgb(34, 114, 181))
             imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_GO
             setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true }
         }
-        bar.addView(address, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 5f))
-        navButton("GO") { navigate(address.text.toString()) }
-        val tools = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        bar.addView(address, LinearLayout.LayoutParams(0, dp(43), 1f).apply {
+            setMargins(dp(5), 0, dp(5), 0)
+        })
+        navButton("➜") { navigate(address.text.toString()) }
+        val tools = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(8), dp(4), dp(8), dp(5))
+            setBackgroundColor(Color.rgb(7, 19, 39))
+        }
         fun tool(label: String, action: () -> Unit) {
-            tools.addView(Button(this).apply {
-                text = label
-                textSize = 12f
-                isAllCaps = false
-                setTextColor(Color.WHITE)
-                backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(19, 43, 76))
-                setOnClickListener { action() }
-            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            tools.addView(styledButton(label, Color.rgb(12, 36, 69), Color.rgb(31, 75, 122), action),
+                LinearLayout.LayoutParams(0, dp(40), 1f).apply { setMargins(dp(2), 0, dp(2), 0) })
         }
         tool("★") { bookmark() }
         tool("Закладки") { showBookmarks() }
         tool("Історія") { showHistory() }
-        tool("Меню") { showMenu() }
-        tool("Курсор") { cursorMode = !cursorMode; cursorOverlay.invalidate(); web.requestFocus(); Toast.makeText(this, if (cursorMode) "Курсор: стрілки — рух, OK — натискання" else "Звичайне керування", Toast.LENGTH_LONG).show() }
+        tool("⚙") { showMenu() }
+        tool("Курсор") {
+            cursorMode = !cursorMode
+            cursorOverlay.invalidate()
+            web.requestFocus()
+            Toast.makeText(this, if (cursorMode) "Курсор: стрілки — рух, OK — натискання" else "Звичайне керування", Toast.LENGTH_LONG).show()
+        }
         root.addView(bar)
-        tools.setBackgroundColor(Color.rgb(9, 20, 39))
         root.addView(tools)
         web = WebView(this)
         web.settings.javaScriptEnabled = true
@@ -206,79 +209,128 @@ class MainActivity : Activity() {
         showHome()
     }
 
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private fun styledButton(label: String, fill: Int, border: Int, action: () -> Unit): TextView =
+        TextView(this).apply {
+            text = label
+            textSize = 13f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setTypeface(null, Typeface.BOLD)
+            background = rounded(fill, border)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { action() }
+            setOnFocusChangeListener { _, focused ->
+                alpha = if (focused) 1f else 0.94f
+                scaleX = if (focused) 1.035f else 1f
+                scaleY = if (focused) 1.035f else 1f
+                elevation = if (focused) dp(8).toFloat() else dp(2).toFloat()
+            }
+        }
+
     private fun showHome() {
         page.visibility = View.GONE
         homePanel.visibility = View.VISIBLE
         homePanel.removeAllViews()
-        fun heading(label: String) {
-            homePanel.addView(TextView(this).apply {
-                text = label
-                textSize = 19f
-                setTextColor(Color.WHITE)
-                setTypeface(null, Typeface.BOLD)
-                setPadding(8, 14, 8, 12)
-            })
+        homePanel.setPadding(dp(16), dp(8), dp(16), dp(12))
+        val wide = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE ||
+            resources.configuration.smallestScreenWidthDp >= 600
+        val scroll = android.widget.ScrollView(this).apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = false
         }
-        heading("TV Light Browser")
+        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        scroll.addView(content)
+        homePanel.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        header.addView(TextView(this).apply {
+            text = "◈  TV LIGHT BROWSER"
+            textSize = if (wide) 24f else 19f
+            setTextColor(Color.rgb(236, 247, 255))
+            setTypeface(null, Typeface.BOLD)
+        }, LinearLayout.LayoutParams(0, dp(52), 1f))
+        header.addView(styledButton("⚙", Color.rgb(17, 46, 83), Color.rgb(46, 127, 191)) { showMenu() },
+            LinearLayout.LayoutParams(dp(46), dp(42)))
+        content.addView(header)
+        val tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        listOf("Головна", "Веб", "Закладки", "Історія").forEachIndexed { index, name ->
+            val action: () -> Unit = when (index) {
+                0 -> {{ showHome() }}
+                1 -> {{ navigate(prefs.getString("home", "https://www.google.com") ?: "https://www.google.com") }}
+                2 -> {{ showBookmarks() }}
+                else -> {{ showHistory() }}
+            }
+            tabs.addView(styledButton(name, if (index == 0) Color.rgb(15, 79, 132) else Color.rgb(9, 29, 56),
+                if (index == 0) Color.rgb(0, 185, 255) else Color.rgb(24, 66, 111), action),
+                LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
+        }
+        content.addView(tabs)
         val search = EditText(this).apply {
-            hint = "Пошук або введіть адресу сайту..."
+            hint = "⌕  Пошук або введіть адресу сайту..."
             setSingleLine(true)
+            textSize = if (wide) 17f else 15f
             setTextColor(Color.WHITE)
-            setHintTextColor(Color.LTGRAY)
-            setPadding(22, 14, 22, 14)
-            background = rounded(Color.rgb(20, 45, 78), Color.rgb(39, 174, 255))
+            setHintTextColor(Color.rgb(146, 181, 218))
+            setPadding(dp(18), 0, dp(18), 0)
+            background = rounded(Color.rgb(14, 41, 76), Color.rgb(30, 177, 250))
             imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_GO
             setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true }
         }
-        homePanel.addView(search, LinearLayout.LayoutParams(-1, -2))
-        heading("Швидкий доступ")
-        val tiles = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
-        val tileRow = LinearLayout(this)
-        fun tile(label: String, color: Int, action: () -> Unit) {
-            tileRow.addView(Button(this).apply {
-                text = label
-                textSize = 16f
-                isAllCaps = false
-                setTextColor(Color.WHITE)
-                background = rounded(color, Color.rgb(55, 183, 255))
-                setOnClickListener { action() }
-            }, LinearLayout.LayoutParams((154 * resources.displayMetrics.density).toInt(),
-                (106 * resources.displayMetrics.density).toInt()).apply { setMargins(5, 5, 5, 5) })
-        }
-        tile("Фільми", Color.rgb(66, 29, 111)) { showEntries("bookmarks", "Сайти для фільмів") }
-        tile("Серіали", Color.rgb(9, 65, 120)) { showEntries("bookmarks", "Сайти для серіалів") }
-        tile("ТБ онлайн", Color.rgb(4, 95, 70)) { showEntries("bookmarks", "ТБ-закладки") }
-        tile("Завантаження", Color.rgb(108, 75, 12)) { openDownloads() }
-        tile("Налаштування", Color.rgb(18, 58, 112)) { showMenu() }
-        tiles.addView(tileRow)
-        homePanel.addView(tiles)
-        heading("★ Швидкі закладки")
-        val shortcuts = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
-        val shortcutRow = LinearLayout(this)
-        val bookmarks = entries("bookmarks").take(12)
-        bookmarks.forEach { url ->
-            val host = Uri.parse(url).host ?: url
-            shortcutRow.addView(Button(this).apply {
-                text = host.removePrefix("www.")
-                isAllCaps = false
-                setTextColor(Color.WHITE)
-                background = rounded(Color.rgb(22, 41, 69), Color.rgb(49, 99, 157))
-                setOnClickListener { navigate(url) }
-            }, LinearLayout.LayoutParams((170 * resources.displayMetrics.density).toInt(), -2).apply { setMargins(4, 4, 4, 4) })
-        }
-        shortcutRow.addView(Button(this).apply {
-            text = "+ Додати"
-            isAllCaps = false
-            setOnClickListener { promptBookmark() }
+        content.addView(search, LinearLayout.LayoutParams(-1, dp(54)).apply {
+            setMargins(dp(3), dp(15), dp(3), dp(9))
         })
-        shortcuts.addView(shortcutRow)
-        homePanel.addView(shortcuts)
-        val browse = Button(this).apply {
-            text = "Відкрити браузер"
-            isAllCaps = false
-            setOnClickListener { navigate(prefs.getString("home", "https://www.google.com") ?: "https://www.google.com") }
+        fun heading(text: String) {
+            content.addView(TextView(this).apply {
+                this.text = text
+                textSize = if (wide) 19f else 17f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(Color.rgb(229, 244, 255))
+                setPadding(dp(5), dp(12), 0, dp(10))
+            })
         }
-        homePanel.addView(browse)
+        heading("Швидкий доступ")
+        val tiles = listOf(
+            Triple("▣\\nФільми", Color.rgb(78, 28, 137), { showEntries("bookmarks", "Сайти для фільмів") }),
+            Triple("▤\\nСеріали", Color.rgb(8, 77, 142), { showEntries("bookmarks", "Сайти для серіалів") }),
+            Triple("▣\\nТБ онлайн", Color.rgb(6, 100, 79), { showEntries("bookmarks", "ТБ-закладки") }),
+            Triple("⇩\\nЗавантаження", Color.rgb(130, 88, 15), { openDownloads() }),
+            Triple("⚙\\nНалаштування", Color.rgb(26, 65, 125), { showMenu() })
+        )
+        val columns = if (wide) 5 else 2
+        val grid = GridLayout(this).apply {
+            columnCount = columns
+            useDefaultMargins = false
+        }
+        val width = resources.displayMetrics.widthPixels - dp(44)
+        val tileWidth = (width / columns) - dp(7)
+        tiles.forEach { (label, fill, action) ->
+            grid.addView(styledButton(label.replace("\\n", "\n"), fill, Color.rgb(50, 166, 242), action).apply {
+                textSize = if (wide) 17f else 16f
+                elevation = dp(3).toFloat()
+            }, GridLayout.LayoutParams().apply {
+                width = tileWidth
+                height = if (wide) dp(118) else dp(112)
+                setMargins(dp(3), dp(4), dp(3), dp(4))
+            })
+        }
+        content.addView(grid)
+        heading("★  Швидкі закладки")
+        val shortcuts = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        entries("bookmarks").take(12).forEach { url ->
+            val host = Uri.parse(url).host?.removePrefix("www.") ?: url
+            row.addView(styledButton(host, Color.rgb(17, 43, 78), Color.rgb(40, 100, 155)) { navigate(url) },
+                LinearLayout.LayoutParams(dp(160), dp(49)).apply { setMargins(dp(3), dp(3), dp(3), dp(3)) })
+        }
+        row.addView(styledButton("+ Додати", Color.rgb(18, 52, 91), Color.rgb(35, 155, 231)) { promptBookmark() },
+            LinearLayout.LayoutParams(dp(145), dp(49)).apply { setMargins(dp(3), dp(3), dp(3), dp(3)) })
+        shortcuts.addView(row)
+        content.addView(shortcuts)
     }
 
     private fun rounded(fill: Int, stroke: Int): GradientDrawable =
