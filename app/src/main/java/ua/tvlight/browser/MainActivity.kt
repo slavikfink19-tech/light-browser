@@ -231,6 +231,24 @@ class MainActivity : Activity() {
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
+    private fun focusFirstMenuControl() {
+        if (!isTelevision) return
+        homePanel.post {
+            fun find(view: View): View? {
+                if (view.visibility != View.VISIBLE) return null
+                if (view.isFocusable && view.isClickable && view.isEnabled) return view
+                if (view is ViewGroup) {
+                    for (i in 0 until view.childCount) {
+                        val found = find(view.getChildAt(i))
+                        if (found != null) return found
+                    }
+                }
+                return null
+            }
+            find(homePanel)?.requestFocus()
+        }
+    }
+
     private fun styledButton(label: String, fill: Int, border: Int, action: () -> Unit): TextView =
         TextView(this).apply {
             text = label
@@ -243,6 +261,7 @@ class MainActivity : Activity() {
             isFocusable = true
             setOnClickListener { action() }
             setOnFocusChangeListener { _, focused ->
+                background = rounded(if (focused) Color.rgb(48, 99, 144) else fill, if (focused) Color.WHITE else border)
                 alpha = if (focused) 1f else 0.94f
                 scaleX = if (focused) 1.035f else 1f
                 scaleY = if (focused) 1.035f else 1f
@@ -282,6 +301,7 @@ class MainActivity : Activity() {
         render(body)
         scroll.addView(body)
         homePanel.addView(scroll, LinearLayout.LayoutParams(-1, -1))
+        focusFirstMenuControl()
     }
 
     private fun panelAction(body: LinearLayout, title: String, subtitle: String = "", action: () -> Unit) {
@@ -293,6 +313,14 @@ class MainActivity : Activity() {
             isClickable = true
             isFocusable = true
             setOnClickListener { action() }
+            setOnFocusChangeListener { _, focused ->
+                background = rounded(
+                    if (focused) Color.rgb(48, 99, 144) else Color.rgb(34, 57, 82),
+                    if (focused) Color.WHITE else Color.rgb(57, 81, 107)
+                )
+                scaleX = if (focused) 1.015f else 1f
+                scaleY = if (focused) 1.015f else 1f
+            }
         }
         container.addView(TextView(this).apply {
             text = title
@@ -326,6 +354,7 @@ class MainActivity : Activity() {
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         scroll.addView(content)
         homePanel.addView(scroll, LinearLayout.LayoutParams(-1, -1))
+        focusFirstMenuControl()
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
