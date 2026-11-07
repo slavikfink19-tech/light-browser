@@ -161,6 +161,7 @@ class MainActivity : Activity() {
             override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
                 if (view == null || fullscreen != null) return
                 fullscreen = view
+                updateScreenAwake()
                 fullscreenCallback = callback
                 val container = FrameLayout(this@MainActivity)
                 container.setBackgroundColor(Color.BLACK)
@@ -269,6 +270,15 @@ class MainActivity : Activity() {
         showHome()
     }
 
+    private fun updateScreenAwake() {
+        val watchingOrBrowsing = page.visibility == View.VISIBLE || fullscreen != null
+        if (watchingOrBrowsing) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun focusFirstMenuControl() {
@@ -313,6 +323,7 @@ class MainActivity : Activity() {
     private fun panel(title: String, render: (LinearLayout) -> Unit) {
         toolbar.visibility = View.GONE
         page.visibility = View.GONE
+        updateScreenAwake()
         homePanel.visibility = View.VISIBLE
         homePanel.removeAllViews()
         homePanel.setPadding(dp(14), dp(12), dp(14), dp(12))
@@ -382,6 +393,7 @@ class MainActivity : Activity() {
     private fun showHome() {
         toolbar.visibility = View.GONE
         page.visibility = View.GONE
+        updateScreenAwake()
         homePanel.visibility = View.VISIBLE
         homePanel.removeAllViews()
         homePanel.setPadding(dp(16), dp(8), dp(16), dp(12))
@@ -978,6 +990,7 @@ class MainActivity : Activity() {
         homePanel.visibility = View.GONE
         toolbar.visibility = if (immersive) View.GONE else View.VISIBLE
         page.visibility = View.VISIBLE
+        updateScreenAwake()
         cursorX = (web.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels) / 2f
         cursorY = (web.height.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels) / 2f
         cursorOverlay.invalidate()
@@ -993,6 +1006,7 @@ class MainActivity : Activity() {
         (container?.parent as? ViewGroup)?.removeView(container)
         (view.parent as? ViewGroup)?.removeView(view)
         fullscreen = null
+        updateScreenAwake()
         fullscreenContainer = null
         fullscreenPointer = null
         root.visibility = View.VISIBLE
@@ -1065,6 +1079,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         closeFullscreen()
         web.stopLoading()
         web.webChromeClient = null
