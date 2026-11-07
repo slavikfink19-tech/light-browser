@@ -53,6 +53,7 @@ class MainActivity : Activity() {
     private var fullscreenPointer: View? = null
     private lateinit var root: LinearLayout
     private lateinit var cursorOverlay: View
+    private lateinit var menuCursorOverlay: View
     private lateinit var page: FrameLayout
     private lateinit var homePanel: LinearLayout
     private lateinit var toolbar: LinearLayout
@@ -267,6 +268,27 @@ class MainActivity : Activity() {
         root.addView(homePanel, LinearLayout.LayoutParams(-1, 0, 1f))
         web.requestFocus()
         setContentView(root)
+        menuCursorOverlay = object : View(this) {
+            private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.FILL }
+            private val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.BLACK; style = Paint.Style.STROKE; strokeWidth = dp(2).toFloat()
+            }
+            override fun onDraw(canvas: Canvas) {
+                if (!cursorMode || homePanel.visibility != View.VISIBLE || fullscreen != null) return
+                val x = cursorX.coerceIn(0f, width.toFloat())
+                val y = cursorY.coerceIn(0f, height.toFloat())
+                val arrow = android.graphics.Path().apply {
+                    moveTo(x, y); lineTo(x, y + dp(14)); lineTo(x + dp(4), y + dp(11))
+                    lineTo(x + dp(6), y + dp(16)); lineTo(x + dp(9), y + dp(15))
+                    lineTo(x + dp(7), y + dp(9)); lineTo(x + dp(12), y + dp(9)); close()
+                }
+                canvas.drawPath(arrow, fill); canvas.drawPath(arrow, border)
+            }
+        }
+        menuCursorOverlay.isClickable = false
+        menuCursorOverlay.isFocusable = false
+        (findViewById<ViewGroup>(android.R.id.content)).addView(
+            menuCursorOverlay, ViewGroup.LayoutParams(-1, -1))
         showHome()
     }
 
@@ -325,6 +347,11 @@ class MainActivity : Activity() {
         page.visibility = View.GONE
         updateScreenAwake()
         homePanel.visibility = View.VISIBLE
+        menuCursorOverlay.post {
+            cursorX = menuCursorOverlay.width / 2f
+            cursorY = menuCursorOverlay.height / 2f
+            menuCursorOverlay.invalidate()
+        }
         homePanel.removeAllViews()
         homePanel.setPadding(dp(14), dp(12), dp(14), dp(12))
         homePanel.setBackgroundColor(Color.rgb(13, 29, 49))
@@ -1018,30 +1045,33 @@ class MainActivity : Activity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val player = fullscreen
-        val activePointer = if (player != null) fullscreenPointer else cursorOverlay
-        val target = player ?: web
-        val active = player != null || page.visibility == View.VISIBLE
-        if (cursorMode && active && (player != null || !address.hasFocus()) &&
+        val inMenu = player == null && homePanel.visibility == View.VISIBLE
+        val activePointer = if (player != null) fullscreenPointer else if (inMenu) menuCursorOverlay else cursorOverlay
+        val target = player ?: if (inMenu) homePanel else web
+        val active = player != null || page.visibility == View.VISIBLE || inMenu
+        if (cursorMode && active && (player != null || inMenu || !address.hasFocus()) &&
             event.action == KeyEvent.ACTION_DOWN) {
             val step = dp(if (event.repeatCount > 8) 58 else 30).toFloat()
             val edge = dp(20).toFloat()
-            val width = (if (player != null) fullscreenContainer?.width else web.width) ?: web.width
-            val height = (if (player != null) fullscreenContainer?.height else web.height) ?: web.height
+            val width = if (inMenu) menuCursorOverlay.width else (if (player != null) fullscreenContainer?.width else web.width) ?: web.width
+            val height = if (inMenu) menuCursorOverlay.height else (if (player != null) fullscreenContainer?.height else web.height) ?: web.height
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_LEFT -> {
                     cursorX = (cursorX - step).coerceAtLeast(0f)
-                    if (player == null && cursorX <= edge) web.scrollBy(-dp(90), 0)
+                    if (!inMenu && player == null && cursorX <= edge) web.scrollBy(-dp(90), 0)
                 }
                 KeyEvent.KEYCODE_DPAD_RIGHT -> {
                     cursorX = (cursorX + step).coerceAtMost(width.toFloat())
-                    if (player == null && cursorX >= width - edge) web.scrollBy(dp(90), 0)
+                    if (!inMenu && player == null && cursorX >= width - edge) web.scrollBy(dp(90), 0)
                 }
                 KeyEvent.KEYCODE_DPAD_UP ->
                     { cursorY = (cursorY - step).coerceAtLeast(0f)
-                      if (player == null && cursorY <= edge) web.scrollBy(0, -dp(110)) }
+                      if (inMenu && cursorY <= edge) (homePanel.getChildAt(0) as? android.widget.ScrollView)?.scrollBy(0, -dp(110))
+                      else if (player == null && cursorY <= edge) web.scrollBy(0, -dp(110)) }
                 KeyEvent.KEYCODE_DPAD_DOWN ->
                     { cursorY = (cursorY + step).coerceAtMost(height.toFloat())
-                      if (player == null && cursorY >= height - edge) web.scrollBy(0, dp(110)) }
+                      if (inMenu && cursorY >= height - edge) (homePanel.getChildAt(0) as? android.widget.ScrollView)?.scrollBy(0, dp(110))
+                      else if (player == null && cursorY >= height - edge) web.scrollBy(0, dp(110)) }
                 KeyEvent.KEYCODE_PAGE_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN -> {
                     if (player == null) web.scrollBy(0, (web.height * 0.8f).toInt())
                 }
@@ -1056,6 +1086,16 @@ class MainActivity : Activity() {
                     val y = cursorY.coerceIn(0f, height.toFloat())
                     val down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0)
                     val up = MotionEvent.obtain(now, now + 65, MotionEvent.ACTION_UP, x, y, 0)
+                    if (inMenu) {
+                        val overlayLocation = IntArray(2)
+                        val targetLocation = IntArray(2)
+                        menuCursorOverlay.getLocationOnScreen(overlayLocation)
+                        target.getLocationOnScreen(targetLocation)
+                        down.offsetLocation((overlayLocation[0] - targetLocation[0]).toFloat(),
+                            (overlayLocation[1] - targetLocation[1]).toFloat())
+                        up.offsetLocation((overlayLocation[0] - targetLocation[0]).toFloat(),
+                            (overlayLocation[1] - targetLocation[1]).toFloat())
+                    }
                     target.dispatchTouchEvent(down)
                     target.dispatchTouchEvent(up)
                     down.recycle()
