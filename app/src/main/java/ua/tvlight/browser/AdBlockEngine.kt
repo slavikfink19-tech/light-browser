@@ -15,6 +15,8 @@ import java.util.concurrent.atomic.AtomicReference
 class AdBlockEngine(private val context: Context) {
     private val cache = File(context.filesDir, "adblock-hosts.txt")
     private val hosts = AtomicReference<Set<String>>(builtIn)
+    private val filterHosts = AtomicReference<Set<String>>(emptySet())
+    private val filterCache = File(context.filesDir, "adblock-easylist-hosts.txt")
     private val prefs = context.getSharedPreferences("adblock_engine", Context.MODE_PRIVATE)
 
     init {
@@ -24,6 +26,7 @@ class AdBlockEngine(private val context: Context) {
                     val parsed = parseHosts(cache.readText())
                     if (parsed.size > 1000) hosts.set(builtIn + parsed)
                 }
+                if (filterCache.exists()) filterHosts.set(filterCache.readLines().toSet())
                 val last = prefs.getLong("updated", 0L)
                 if (System.currentTimeMillis() - last > 24L * 60 * 60 * 1000) refresh()
             } catch (_: Exception) { /* keep offline rules */ }
@@ -34,7 +37,7 @@ class AdBlockEngine(private val context: Context) {
         val uri = request?.url ?: return false
         val host = uri.host?.lowercase(Locale.ROOT)?.trimEnd('.') ?: return false
         if (host == pageHost) return false
-        val domainBlock = matches(host, hosts.get())
+        val domainBlock = matches(host, hosts.get()) || matches(host, filterHosts.get())
         if (domainBlock) return true
         if (!strong) return false
         // Restrict heuristic rules to third-party resources; do not block media URLs.
@@ -78,7 +81,44 @@ class AdBlockEngine(private val context: Context) {
         return result
     }
 
+    private fun refreshFilterHosts() {
+        val sources = listOf(
+            "https://easylist.to/easylist/easylist.txt",
+            "https://easylist.to/easylist/easyprivacy.txt",
+            "https://filters.adtidy.org/extension/ublock/filters/2.txt"
+        )
+        val domains = HashSet<String>()
+        for (source in sources) {
+            var conn: HttpURLConnection? = null
+            try {
+                conn = (URL(source).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 7000
+                    readTimeout = 12000
+                }
+                if (conn.responseCode != 200) continue
+                conn.inputStream.bufferedReader().use { reader ->
+                    var count = 0
+                    while (true) {
+                        val line = reader.readLine() ?: break
+                        count += line.length
+                        if (count > 6_000_000) break
+                        if (!line.startsWith("||") || line.startsWith("||~")) continue
+                        val domain = line.drop(2).substringBefore('^')
+                        if (domain.length < 5 || !domain.contains('.') ||
+                            !domain.all { it.isLetterOrDigit() || it == '.' || it == '-' }) continue
+                        domains.add(domain.lowercase(Locale.ROOT))
+                    }
+                }
+            } catch (_: Exception) {} finally { conn?.disconnect() }
+        }
+        if (domains.size > 1000) {
+            filterCache.writeText(domains.joinToString("\n"))
+            filterHosts.set(domains)
+        }
+    }
+
     private fun refresh() {
+        refreshFilterHosts()
         var connection: HttpURLConnection? = null
         try {
             connection = (URL("https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts")
