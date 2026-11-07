@@ -47,6 +47,7 @@ class MainActivity : Activity() {
     private lateinit var cursorOverlay: View
     private lateinit var page: FrameLayout
     private lateinit var homePanel: LinearLayout
+    @Volatile private var currentSiteHost: String? = null
     private var cursorMode = false
     private var cursorX = 300f
     private var cursorY = 300f
@@ -130,6 +131,9 @@ class MainActivity : Activity() {
         web.isFocusable = true
         web.isFocusableInTouchMode = true
         web.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                currentSiteHost = Uri.parse(url ?: "").host?.lowercase(Locale.ROOT)
+            }
             override fun onPageFinished(view: WebView?, url: String?) {
                 address.setText(url ?: "")
                 if (isAdBlockActive()) applyCosmeticFilters()
@@ -370,7 +374,7 @@ class MainActivity : Activity() {
 
     private fun isAdBlockActive(): Boolean {
         if (!prefs.getBoolean("adblock", true)) return false
-        val host = Uri.parse(web.url ?: "").host?.lowercase(Locale.ROOT) ?: return true
+        val host = currentSiteHost ?: return true
         return host !in entries("adblock_exceptions")
     }
 
