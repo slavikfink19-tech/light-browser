@@ -13,6 +13,7 @@ import android.widget.HorizontalScrollView
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
 import android.webkit.WebSettings
 import android.view.KeyEvent
 import android.view.View
@@ -201,6 +202,7 @@ class MainActivity : Activity() {
                 fullscreenContainer = container
                 fullscreenPointer = pointerView
                 root.visibility = View.GONE
+                menuCursorOverlay.visibility = View.GONE
                 window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
                 addContentView(container, ViewGroup.LayoutParams(-1, -1))
                 container.post {
@@ -422,6 +424,10 @@ class MainActivity : Activity() {
         page.visibility = View.GONE
         updateScreenAwake()
         homePanel.visibility = View.VISIBLE
+        if (::menuCursorOverlay.isInitialized) {
+            menuCursorOverlay.visibility = View.VISIBLE
+            menuCursorOverlay.invalidate()
+        }
         homePanel.removeAllViews()
         homePanel.setPadding(dp(16), dp(8), dp(16), dp(12))
         val wide = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE ||
@@ -1014,7 +1020,14 @@ class MainActivity : Activity() {
                 }) + URLEncoder.encode(input, "UTF-8")
             else -> "https://$input"
         }
+        // Dismiss the search keyboard before switching from the home screen.
+        val focusedInput = currentFocus
+        (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
+            .hideSoftInputFromWindow((focusedInput ?: homePanel).windowToken, 0)
+        focusedInput?.clearFocus()
         homePanel.visibility = View.GONE
+        menuCursorOverlay.visibility = View.GONE
+        menuCursorOverlay.invalidate()
         toolbar.visibility = if (immersive) View.GONE else View.VISIBLE
         page.visibility = View.VISIBLE
         updateScreenAwake()
@@ -1037,6 +1050,7 @@ class MainActivity : Activity() {
         fullscreenContainer = null
         fullscreenPointer = null
         root.visibility = View.VISIBLE
+        menuCursorOverlay.visibility = if (homePanel.visibility == View.VISIBLE) View.VISIBLE else View.GONE
         web.requestFocus()
         window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
         fullscreenCallback?.onCustomViewHidden()
