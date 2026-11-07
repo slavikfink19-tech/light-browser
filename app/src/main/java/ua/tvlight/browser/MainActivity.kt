@@ -231,6 +231,8 @@ class MainActivity : Activity() {
         }
 
     private fun showHome() {
+        root.getChildAt(0).visibility = View.GONE
+        root.getChildAt(1).visibility = View.GONE
         page.visibility = View.GONE
         homePanel.visibility = View.VISIBLE
         homePanel.removeAllViews()
@@ -260,10 +262,10 @@ class MainActivity : Activity() {
         val tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         listOf("Головна", "Веб", "Закладки", "Історія").forEachIndexed { index, name ->
             val action: () -> Unit = when (index) {
-                0 -> {{ showHome() }}
-                1 -> {{ navigate(prefs.getString("home", "https://www.google.com") ?: "https://www.google.com") }}
-                2 -> {{ showBookmarks() }}
-                else -> {{ showHistory() }}
+                0 -> { { showHome() } }
+                1 -> { { navigate(prefs.getString("home", "https://www.google.com") ?: "https://www.google.com") } }
+                2 -> { { showBookmarks() } }
+                else -> { { showHistory() } }
             }
             tabs.addView(styledButton(name, if (index == 0) Color.rgb(15, 79, 132) else Color.rgb(9, 29, 56),
                 if (index == 0) Color.rgb(0, 185, 255) else Color.rgb(24, 66, 111), action),
@@ -480,6 +482,8 @@ class MainActivity : Activity() {
             else -> "https://$input"
         }
         homePanel.visibility = View.GONE
+        root.getChildAt(0).visibility = View.VISIBLE
+        root.getChildAt(1).visibility = View.VISIBLE
         page.visibility = View.VISIBLE
         web.loadUrl(url)
     }
