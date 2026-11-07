@@ -290,6 +290,11 @@ class MainActivity : Activity() {
                 setPadding(dp(5), dp(12), 0, dp(10))
             })
         }
+        content.addView(styledButton("◉  Мій профіль", Color.rgb(15, 47, 83), Color.rgb(43, 144, 210)) {
+            showProfile()
+        }.apply { textSize = 16f }, LinearLayout.LayoutParams(-1, dp(52)).apply {
+            setMargins(dp(3), dp(7), dp(3), dp(4))
+        })
         content.addView(styledButton("✈  Telegram Web", Color.rgb(14, 64, 103), Color.rgb(41, 163, 230)) {
             navigate("https://web.telegram.org/")
         }.apply { textSize = 16f }, LinearLayout.LayoutParams(-1, dp(52)).apply {
@@ -441,7 +446,7 @@ class MainActivity : Activity() {
         passwordPrompt("Створити зашифровану копію") { pass ->
             try {
                 val data = JSONObject()
-                val keys = listOf("bookmarks", "history", "home", "search_engine", "zoom", "adblock_exceptions") +
+                val keys = listOf("bookmarks", "history", "home", "search_engine", "zoom", "adblock_exceptions", "profile_name", "profile_avatar") +
                     defaultCategories.indices.flatMap { listOf(categoryKey(it), "category_name_$it") }
                 keys.forEach { key ->
                     when (val value = prefs.all[key]) {
@@ -531,6 +536,44 @@ class MainActivity : Activity() {
         }
     }
 
+
+
+    private fun showProfile() {
+        val name = prefs.getString("profile_name", "Користувач") ?: "Користувач"
+        val avatar = prefs.getString("profile_avatar", "◉") ?: "◉"
+        themedMenu("$avatar  Мій профіль — $name", listOf(
+            "✎ Змінити ім’я" to { editProfileName() },
+            "◈ Обрати аватар" to { chooseProfileAvatar() },
+            "✈ Відкрити Telegram Web" to { navigate("https://web.telegram.org/") },
+            "⇧ Експорт зашифрованої копії" to { exportBackup() },
+            "⇩ Імпорт зашифрованої копії" to { importBackup() }
+        ))
+    }
+
+    private fun editProfileName() {
+        val input = EditText(this).apply {
+            setSingleLine(true)
+            setText(prefs.getString("profile_name", "Користувач"))
+            selectAll()
+        }
+        AlertDialog.Builder(this).setTitle("Ім’я профілю").setView(input)
+            .setPositiveButton("Зберегти") { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.isNotEmpty() && name.length <= 50) {
+                    prefs.edit().putString("profile_name", name).apply()
+                    showHome()
+                } else notifyUser("Введіть ім’я до 50 символів")
+            }.setNegativeButton("Скасувати", null).show()
+    }
+
+    private fun chooseProfileAvatar() {
+        val avatars = arrayOf("◉", "◈", "★", "◆", "●", "♟")
+        AlertDialog.Builder(this).setTitle("Аватар профілю")
+            .setItems(avatars) { _, index ->
+                prefs.edit().putString("profile_avatar", avatars[index]).apply()
+                showHome()
+            }.setNegativeButton("Скасувати", null).show()
+    }
 
     private fun showMenu() {
         themedMenu("⚙ Налаштування TV Light Browser", listOf(
