@@ -22,9 +22,34 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Build debug APK
+      - name: Restore persistent release signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.TVLIGHT_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.TVLIGHT_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.TVLIGHT_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.TVLIGHT_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+            printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/tvlight-release.jks"
+            echo "TVLIGHT_KEYSTORE_PATH=$RUNNER_TEMP/tvlight-release.jks" >> "$GITHUB_ENV"
+            echo "TVLIGHT_KEYSTORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "TVLIGHT_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "TVLIGHT_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "TVLIGHT_SIGNED_RELEASE=true" >> "$GITHUB_ENV"
+          fi
+      - name: Build signed release APK
+        if: env.TVLIGHT_SIGNED_RELEASE == 'true'
+        run: gradle --no-daemon assembleRelease
+      - name: Build debug APK (not upgrade-stable)
+        if: env.TVLIGHT_SIGNED_RELEASE != 'true'
         run: gradle --no-daemon assembleDebug
       - uses: actions/upload-artifact@v4
+        if: env.TVLIGHT_SIGNED_RELEASE == 'true'
         with:
-          name: TVLightBrowser-debug
+          name: TVLightBrowser-release
+          path: app/build/outputs/apk/release/*.apk
+      - uses: actions/upload-artifact@v4
+        if: env.TVLIGHT_SIGNED_RELEASE != 'true'
+        with:
+          name: TVLightBrowser-debug-unstable-signature
           path: app/build/outputs/apk/debug/*.apk
