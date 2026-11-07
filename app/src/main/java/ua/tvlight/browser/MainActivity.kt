@@ -179,18 +179,33 @@ class MainActivity : Activity() {
         page = FrameLayout(this)
         page.addView(web, FrameLayout.LayoutParams(-1, -1))
         cursorOverlay = object : View(this) {
-            private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.YELLOW
-                strokeWidth = 3f * resources.displayMetrics.density
+            private val pointer = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                style = Paint.Style.FILL
+                setShadowLayer(dp(3).toFloat(), dp(1).toFloat(), dp(2).toFloat(), Color.BLACK)
+            }
+            private val outline = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.rgb(20, 35, 52)
                 style = Paint.Style.STROKE
+                strokeWidth = dp(2).toFloat()
+                strokeJoin = Paint.Join.ROUND
             }
             override fun onDraw(canvas: Canvas) {
                 if (!cursorMode || page.visibility != View.VISIBLE) return
                 val x = cursorX.coerceIn(0f, width.toFloat())
                 val y = cursorY.coerceIn(0f, height.toFloat())
-                canvas.drawCircle(x, y, 12f * resources.displayMetrics.density, paint)
-                canvas.drawLine(x - 18f, y, x + 18f, y, paint)
-                canvas.drawLine(x, y - 18f, x, y + 18f, paint)
+                val arrow = android.graphics.Path().apply {
+                    moveTo(x, y)
+                    lineTo(x, y + dp(27))
+                    lineTo(x + dp(7), y + dp(21))
+                    lineTo(x + dp(12), y + dp(32))
+                    lineTo(x + dp(18), y + dp(29))
+                    lineTo(x + dp(13), y + dp(18))
+                    lineTo(x + dp(23), y + dp(17))
+                    close()
+                }
+                canvas.drawPath(arrow, pointer)
+                canvas.drawPath(arrow, outline)
             }
         }
         page.addView(cursorOverlay, FrameLayout.LayoutParams(-1, -1))
@@ -907,30 +922,47 @@ class MainActivity : Activity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (cursorMode && fullscreen == null && page.visibility == View.VISIBLE && event.action == KeyEvent.ACTION_DOWN && !address.hasFocus()) {
-            val step = 28f * resources.displayMetrics.density
+        if (cursorMode && fullscreen == null && page.visibility == View.VISIBLE &&
+            !address.hasFocus() && event.action == KeyEvent.ACTION_DOWN) {
+            val step = dp(if (event.repeatCount > 8) 58 else 30).toFloat()
+            val edge = dp(20).toFloat()
             when (event.keyCode) {
-                KeyEvent.KEYCODE_DPAD_LEFT -> cursorX -= step
-                KeyEvent.KEYCODE_DPAD_RIGHT -> cursorX += step
-                KeyEvent.KEYCODE_DPAD_UP -> cursorY -= step
-                KeyEvent.KEYCODE_DPAD_DOWN -> cursorY += step
-                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                KeyEvent.KEYCODE_DPAD_LEFT -> {
+                    cursorX = (cursorX - step).coerceAtLeast(0f)
+                    if (cursorX <= edge) web.scrollBy(-dp(100), 0)
+                }
+                KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    cursorX = (cursorX + step).coerceAtMost(web.width.toFloat())
+                    if (cursorX >= web.width - edge) web.scrollBy(dp(100), 0)
+                }
+                KeyEvent.KEYCODE_DPAD_UP -> {
+                    cursorY = (cursorY - step).coerceAtLeast(0f)
+                    if (cursorY <= edge) web.scrollBy(0, -dp(140))
+                }
+                KeyEvent.KEYCODE_DPAD_DOWN -> {
+                    cursorY = (cursorY + step).coerceAtMost(web.height.toFloat())
+                    if (cursorY >= web.height - edge) web.scrollBy(0, dp(140))
+                }
+                KeyEvent.KEYCODE_PAGE_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN ->
+                    web.scrollBy(0, (web.height * 0.8f).toInt())
+                KeyEvent.KEYCODE_PAGE_UP, KeyEvent.KEYCODE_CHANNEL_UP ->
+                    web.scrollBy(0, -(web.height * 0.8f).toInt())
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                    if (event.repeatCount > 0) return true
                     val now = android.os.SystemClock.uptimeMillis()
                     val x = cursorX.coerceIn(0f, web.width.toFloat())
                     val y = cursorY.coerceIn(0f, web.height.toFloat())
                     val down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0)
-                    val up = MotionEvent.obtain(now, now + 50, MotionEvent.ACTION_UP, x, y, 0)
+                    val up = MotionEvent.obtain(now, now + 65, MotionEvent.ACTION_UP, x, y, 0)
                     web.dispatchTouchEvent(down)
                     web.dispatchTouchEvent(up)
                     down.recycle()
                     up.recycle()
                     return true
                 }
-                KeyEvent.KEYCODE_BACK -> return super.dispatchKeyEvent(event)
                 else -> return super.dispatchKeyEvent(event)
             }
-            cursorX = cursorX.coerceIn(0f, web.width.toFloat())
-            cursorY = cursorY.coerceIn(0f, web.height.toFloat())
             cursorOverlay.invalidate()
             return true
         }
