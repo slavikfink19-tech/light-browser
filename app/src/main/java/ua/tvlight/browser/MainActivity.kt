@@ -25,6 +25,9 @@ import android.webkit.WebViewClient
 import android.webkit.WebResourceError
 import android.app.AlertDialog
 import android.content.Context
+import android.content.Intent
+import org.json.JSONObject
+import android.text.InputType
 import android.webkit.CookieManager
 import android.webkit.DownloadListener
 import android.app.DownloadManager
@@ -54,6 +57,8 @@ class MainActivity : Activity() {
     private val tabUrls = mutableListOf<String>()
     private var activeTab = 0
     private var immersive = false
+    private var pendingBackup: ByteArray? = null
+    private var pendingImportPassword: CharArray? = null
     private val defaultCategories = listOf("Онлайн-кінотеатри", "Аніме", "Новини", "Соцмережі", "Різне")
     private fun categoryName(i: Int) = prefs.getString("category_name_$i", defaultCategories[i]) ?: defaultCategories[i]
     private fun categoryKey(i: Int) = "category_urls_$i"
@@ -388,6 +393,137 @@ class MainActivity : Activity() {
 
     private fun showBookmarks() = showEntries("bookmarks", "Закладки")
     private fun showHistory() = showEntries("history", "Історія")
+
+
+    private fun themedMenu(title: String, items: List<Pair<String, () -> Unit>>) {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            setBackgroundColor(Color.rgb(7, 19, 39))
+        }
+        val scroll = android.widget.ScrollView(this).apply { addView(layout) }
+        val dialog = AlertDialog.Builder(this).setTitle(title).setView(scroll)
+            .setNegativeButton("Закрити", null).create()
+        items.forEach { (name, action) ->
+            layout.addView(styledButton(name, Color.rgb(16, 40, 72), Color.rgb(39, 110, 170)) {
+                dialog.dismiss(); action()
+            }.apply {
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(16), 0, dp(12), 0)
+                textSize = 15f
+            }, LinearLayout.LayoutParams(-1, dp(50)).apply { setMargins(0, dp(4), 0, dp(4)) })
+        }
+        dialog.show()
+    }
+
+    private fun notifyUser(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+
+    private fun passwordPrompt(title: String, action: (CharArray) -> Unit) {
+        val input = EditText(this).apply {
+            hint = "Пароль (мінімум 8 символів)"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        AlertDialog.Builder(this).setTitle(title).setView(input)
+            .setPositiveButton("Продовжити") { _, _ ->
+                val pass = input.text.toString().toCharArray()
+                if (pass.size < 8) { pass.fill('\\u0000'); notifyUser("Пароль закороткий") }
+                else action(pass)
+            }.setNegativeButton("Скасувати", null).show()
+    }
+
+    private fun exportBackup() {
+        passwordPrompt("Створити зашифровану копію") { pass ->
+            try {
+                val data = JSONObject()
+                val keys = listOf("bookmarks", "history", "home", "search_engine", "zoom", "adblock_exceptions") +
+                    defaultCategories.indices.flatMap { listOf(categoryKey(it), "category_name_$it") }
+                keys.forEach { key ->
+                    when (val value = prefs.all[key]) {
+                        is String -> data.put(key, value)
+                        is Int -> data.put(key, value)
+                    }
+                }
+                pendingBackup = BackupCrypto.encrypt(
+                    JSONObject().put("format", "tvlight-data-v1").put("preferences", data).toString(), pass)
+                startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "application/octet-stream"
+                    putExtra(Intent.EXTRA_TITLE, "TVLight-backup.tvlb")
+                }, 9101)
+            } catch (_: Exception) { pendingBackup = null; notifyUser("Помилка експорту") }
+            finally { pass.fill('\\u0000') }
+        }
+    }
+
+    private fun importBackup() {
+        passwordPrompt("Відновити зашифровану копію") { pass ->
+            pendingImportPassword?.fill('\\u0000')
+            pendingImportPassword = pass
+            try {
+                startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "*/*"
+                }, 9102)
+            } catch (_: Exception) {
+                pendingImportPassword?.fill('\\u0000')
+                pendingImportPassword = null
+                notifyUser("Помилка вибору файлу")
+            }
+        }
+    }
+
+    @Deprecated("Legacy Activity result API")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 9101) {
+            val bytes = pendingBackup
+            pendingBackup = null
+            if (resultCode == Activity.RESULT_OK && data?.data != null && bytes != null) {
+                try {
+                    contentResolver.openOutputStream(data.data!!)?.use { it.write(bytes) }
+                        ?: throw IllegalStateException("No output stream")
+                    notifyUser("Копію збережено")
+                } catch (_: Exception) { notifyUser("Помилка запису") }
+            }
+        }
+        if (requestCode == 9102) {
+            val pass = pendingImportPassword
+            pendingImportPassword = null
+            try {
+                if (resultCode == Activity.RESULT_OK && data?.data != null && pass != null) {
+                    val bytes = contentResolver.openInputStream(data.data!!)?.use { stream ->
+                        val out = java.io.ByteArrayOutputStream()
+                        val buffer = ByteArray(8192)
+                        while (true) {
+                            val n = stream.read(buffer)
+                            if (n < 0) break
+                            if (out.size() + n > 5_000_000) throw IllegalArgumentException("Large file")
+                            out.write(buffer, 0, n)
+                        }
+                        out.toByteArray()
+                    } ?: throw IllegalStateException("No input stream")
+                    val json = JSONObject(BackupCrypto.decrypt(bytes, pass))
+                    require(json.getString("format") == "tvlight-data-v1")
+                    val values = json.getJSONObject("preferences")
+                    val allowed = (listOf("bookmarks", "history", "home", "search_engine", "zoom", "adblock_exceptions") +
+                        defaultCategories.indices.flatMap { listOf(categoryKey(it), "category_name_$it") }).toSet()
+                    val editor = prefs.edit()
+                    values.keys().forEach { key ->
+                        if (key in allowed) {
+                            val value = values.get(key)
+                            if (value is String && value.length <= 50000) editor.putString(key, value)
+                            else if (value is Int && key in setOf("search_engine", "zoom")) editor.putInt(key, value)
+                        }
+                    }
+                    editor.apply()
+                    web.settings.textZoom = prefs.getInt("zoom", 100)
+                    showHome()
+                    notifyUser("Копію відновлено")
+                }
+            } catch (_: Exception) { notifyUser("Невірний пароль або пошкоджений файл") }
+            finally { pass?.fill('\\u0000') }
+        }
+    }
 
     private fun showMenu() {
         val options = arrayOf("Виняток AdBlock для поточного сайту", "Зробити стартовою",
