@@ -290,6 +290,11 @@ class MainActivity : Activity() {
                 setPadding(dp(5), dp(12), 0, dp(10))
             })
         }
+        content.addView(styledButton("✈  Telegram Web", Color.rgb(14, 64, 103), Color.rgb(41, 163, 230)) {
+            navigate("https://web.telegram.org/")
+        }.apply { textSize = 16f }, LinearLayout.LayoutParams(-1, dp(52)).apply {
+            setMargins(dp(3), dp(7), dp(3), dp(7))
+        })
         heading("Швидкий доступ")
         val tiles = defaultCategories.indices.map { i ->
             Triple(categoryName(i), listOf(Color.rgb(78,28,137),Color.rgb(8,77,142),Color.rgb(6,100,79),Color.rgb(130,88,15),Color.rgb(26,65,125))[i],
