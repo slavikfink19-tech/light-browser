@@ -7,7 +7,7 @@ android {
     compileSdk = 35
     defaultConfig {
         applicationId = "ua.tvlight.browser"
-        minSdk = 23
+        minSdk = 21
         targetSdk = 28
         versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 3) + 100
         versionName = "1.0-rc2"
