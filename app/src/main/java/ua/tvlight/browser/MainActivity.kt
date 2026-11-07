@@ -4,6 +4,8 @@ import android.app.Activity
 import android.os.Bundle
 import android.graphics.Color
 import android.graphics.Canvas
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.graphics.Paint
 import android.widget.FrameLayout
 import android.view.Gravity
@@ -58,9 +60,42 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.BLACK)
         }
-        val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val titleBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(16, 8, 16, 8)
+            background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(Color.rgb(9, 20, 45), Color.rgb(16, 48, 83), Color.rgb(8, 17, 38)))
+        }
+        val brand = android.widget.TextView(this).apply {
+            text = "◈  TV LIGHT BROWSER"
+            textSize = 19f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.rgb(108, 213, 255))
+            setPadding(8, 10, 8, 10)
+        }
+        titleBar.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
+        val status = android.widget.TextView(this).apply {
+            text = "● AdBlock"
+            textSize = 12f
+            setTextColor(Color.rgb(107, 236, 174))
+        }
+        titleBar.addView(status)
+        root.addView(titleBar)
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(Color.rgb(15, 29, 52))
+            setPadding(4, 2, 4, 2)
+        }
         fun navButton(label: String, action: () -> Unit) {
-            val button = Button(this).apply { text = label; setOnClickListener { action() } }
+            val button = Button(this).apply {
+                text = label
+                setTextColor(Color.WHITE)
+                textSize = 13f
+                isAllCaps = false
+                backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(24, 72, 119))
+                setOnClickListener { action() }
+            }
             bar.addView(button, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
         navButton("‹") { if (web.canGoBack()) web.goBack() }
@@ -68,7 +103,7 @@ class MainActivity : Activity() {
         navButton("↻") { web.reload() }
         address = EditText(this).apply {
             setSingleLine(true)
-            hint = "Адреса або пошук"
+            hint = "Пошук або адреса сайту"
             setTextColor(Color.WHITE)
             setHintTextColor(Color.LTGRAY)
             imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_GO
@@ -80,6 +115,10 @@ class MainActivity : Activity() {
         fun tool(label: String, action: () -> Unit) {
             tools.addView(Button(this).apply {
                 text = label
+                textSize = 12f
+                isAllCaps = false
+                setTextColor(Color.WHITE)
+                backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(19, 43, 76))
                 setOnClickListener { action() }
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
@@ -89,6 +128,7 @@ class MainActivity : Activity() {
         tool("Меню") { showMenu() }
         tool("Курсор") { cursorMode = !cursorMode; cursorOverlay.invalidate(); web.requestFocus(); Toast.makeText(this, if (cursorMode) "Курсор: стрілки — рух, OK — натискання" else "Звичайне керування", Toast.LENGTH_LONG).show() }
         root.addView(bar)
+        tools.setBackgroundColor(Color.rgb(9, 20, 39))
         root.addView(tools)
         web = WebView(this)
         web.settings.javaScriptEnabled = true
