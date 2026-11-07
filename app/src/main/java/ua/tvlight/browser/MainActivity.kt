@@ -57,6 +57,7 @@ class MainActivity : Activity() {
     private val tabUrls = mutableListOf<String>()
     private var activeTab = 0
     private var immersive = false
+    private val homeTab = "tvlight://home"
     private var pendingBackup: ByteArray? = null
     private var pendingImportPassword: CharArray? = null
     private val defaultCategories = listOf("Онлайн-кінотеатри", "Аніме", "Новини", "Соцмережі", "Різне")
@@ -107,7 +108,7 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
             setHintTextColor(Color.rgb(142, 175, 208))
             setPadding(dp(13), 0, dp(8), 0)
-            background = rounded(Color.rgb(14, 38, 70), Color.rgb(34, 114, 181))
+            background = rounded(Color.rgb(14, 38, 70), Color.rgb(71, 109, 148))
             imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_GO
             setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true }
         }
@@ -197,7 +198,7 @@ class MainActivity : Activity() {
         homePanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(12, 12, 12, 12)
-            setBackgroundColor(Color.rgb(5, 14, 31))
+            setBackgroundColor(Color.rgb(13, 29, 49))
         }
         root.addView(homePanel, LinearLayout.LayoutParams(-1, 0, 1f))
         web.requestFocus()
@@ -225,6 +226,67 @@ class MainActivity : Activity() {
                 elevation = if (focused) dp(8).toFloat() else dp(2).toFloat()
             }
         }
+
+
+    private fun panel(title: String, render: (LinearLayout) -> Unit) {
+        toolbar.visibility = View.GONE
+        page.visibility = View.GONE
+        homePanel.visibility = View.VISIBLE
+        homePanel.removeAllViews()
+        homePanel.setPadding(dp(14), dp(12), dp(14), dp(12))
+        homePanel.setBackgroundColor(Color.rgb(13, 29, 49))
+        val scroll = android.widget.ScrollView(this).apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = false
+        }
+        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val heading = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        heading.addView(styledButton("‹", Color.rgb(31, 55, 78), Color.rgb(55, 82, 108)) {
+            showHome()
+        }, LinearLayout.LayoutParams(dp(48), dp(46)))
+        heading.addView(TextView(this).apply {
+            text = title
+            textSize = 21f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.rgb(237, 244, 250))
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), 0, 0, 0)
+        }, LinearLayout.LayoutParams(0, dp(54), 1f))
+        body.addView(heading)
+        render(body)
+        scroll.addView(body)
+        homePanel.addView(scroll, LinearLayout.LayoutParams(-1, -1))
+    }
+
+    private fun panelAction(body: LinearLayout, title: String, subtitle: String = "", action: () -> Unit) {
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(17), dp(10), dp(12), dp(10))
+            background = rounded(Color.rgb(34, 57, 82), Color.rgb(57, 81, 107))
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { action() }
+        }
+        container.addView(TextView(this).apply {
+            text = title
+            textSize = 16f
+            setTextColor(Color.rgb(242, 247, 253))
+            setTypeface(null, Typeface.BOLD)
+        })
+        if (subtitle.isNotEmpty()) container.addView(TextView(this).apply {
+            text = subtitle
+            textSize = 12f
+            setTextColor(Color.rgb(180, 200, 218))
+            maxLines = 2
+        })
+        body.addView(container, LinearLayout.LayoutParams(-1, if (subtitle.isEmpty()) dp(57) else dp(72)).apply {
+            setMargins(dp(2), dp(4), dp(2), dp(4))
+        })
+    }
 
     private fun showHome() {
         toolbar.visibility = View.GONE
@@ -255,15 +317,15 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams(dp(46), dp(42)))
         content.addView(header)
         val tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        listOf("Головна", "Веб", "Закладки", "Історія").forEachIndexed { index, name ->
+        listOf("Головна", "Вкладки", "Закладки", "Історія").forEachIndexed { index, name ->
             val action: () -> Unit = when (index) {
                 0 -> { { showHome() } }
-                1 -> { { navigate(prefs.getString("home", "https://www.google.com") ?: "https://www.google.com") } }
+                1 -> { { showTabs() } }
                 2 -> { { showBookmarks() } }
                 else -> { { showHistory() } }
             }
             tabs.addView(styledButton(name, if (index == 0) Color.rgb(15, 79, 132) else Color.rgb(9, 29, 56),
-                if (index == 0) Color.rgb(0, 185, 255) else Color.rgb(24, 66, 111), action),
+                if (index == 0) Color.rgb(82, 140, 188) else Color.rgb(49, 75, 101), action),
                 LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
         }
         content.addView(tabs)
@@ -274,7 +336,7 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
             setHintTextColor(Color.rgb(146, 181, 218))
             setPadding(dp(18), 0, dp(18), 0)
-            background = rounded(Color.rgb(14, 41, 76), Color.rgb(30, 177, 250))
+            background = rounded(Color.rgb(14, 41, 76), Color.rgb(92, 146, 186))
             imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_GO
             setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true }
         }
@@ -311,7 +373,7 @@ class MainActivity : Activity() {
         val available = resources.displayMetrics.widthPixels - dp(32) - dp(12)
         val tileWidth = (available / columns) - gap * 2
         tiles.forEach { (label, fill, action) ->
-            val tile = styledButton(label.replace("\\n", "\n"), fill, Color.rgb(50, 166, 242), action).apply {
+            val tile = styledButton(label.replace("\\n", "\n"), fill, Color.rgb(88, 121, 151), action).apply {
                 textSize = if (wide) 17f else 15f
                 elevation = dp(4).toFloat()
                 setShadowLayer(dp(3).toFloat(), 0f, 0f, Color.rgb(30, 130, 220))
@@ -392,39 +454,25 @@ class MainActivity : Activity() {
     }
 
     private fun showEntries(key: String, title: String) {
-        val items = entries(key)
-        if (items.isEmpty()) {
-            Toast.makeText(this, "Список порожній", Toast.LENGTH_SHORT).show()
-            return
+        panel(title) { body ->
+            val items = entries(key)
+            if (items.isEmpty()) panelAction(body, "Список порожній", "Додайте сайт, щоб він з’явився тут") {}
+            items.forEach { url ->
+                panelAction(body, Uri.parse(url).host ?: url, url) { navigate(url) }
+            }
+            if (key == "history") panelAction(body, "Очистити історію") {
+                confirmClear("history", "історію")
+            }
         }
-        AlertDialog.Builder(this).setTitle(title)
-            .setItems(items.toTypedArray()) { _, which -> navigate(items[which]) }
-            .setNegativeButton("Закрити", null).show()
     }
 
     private fun showBookmarks() = showEntries("bookmarks", "Закладки")
-    private fun showHistory() = showEntries("history", "Історія")
-
+    private fun showHistory() = showEntries("history", "Історія перегляду")
 
     private fun themedMenu(title: String, items: List<Pair<String, () -> Unit>>) {
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            setBackgroundColor(Color.rgb(7, 19, 39))
+        panel(title) { body ->
+            items.forEach { (label, action) -> panelAction(body, label, action = action) }
         }
-        val scroll = android.widget.ScrollView(this).apply { addView(layout) }
-        val dialog = AlertDialog.Builder(this).setTitle(title).setView(scroll)
-            .setNegativeButton("Закрити", null).create()
-        items.forEach { (name, action) ->
-            layout.addView(styledButton(name, Color.rgb(16, 40, 72), Color.rgb(39, 110, 170)) {
-                dialog.dismiss(); action()
-            }.apply {
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(16), 0, dp(12), 0)
-                textSize = 15f
-            }, LinearLayout.LayoutParams(-1, dp(50)).apply { setMargins(0, dp(4), 0, dp(4)) })
-        }
-        dialog.show()
     }
 
     private fun notifyUser(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
@@ -658,25 +706,36 @@ class MainActivity : Activity() {
     }
 
     private fun newTab() {
-        if (tabUrls.isEmpty()) tabUrls.add(web.url ?: "https://www.google.com")
-        else if (activeTab in tabUrls.indices) tabUrls[activeTab] = web.url ?: tabUrls[activeTab]
-        tabUrls.add("https://www.google.com")
+        if (tabUrls.isEmpty()) tabUrls.add(homeTab)
+        else if (activeTab in tabUrls.indices) if (page.visibility == View.VISIBLE) tabUrls[activeTab] = web.url ?: tabUrls[activeTab]
+        tabUrls.add(homeTab)
         activeTab = tabUrls.lastIndex
-        navigate(tabUrls[activeTab])
+        showHome()
     }
 
     private fun showTabs() {
-        if (tabUrls.isEmpty()) tabUrls.add(web.url ?: "https://www.google.com")
-        val names = tabUrls.mapIndexed { i, url -> "${i+1}. ${Uri.parse(url).host ?: url}" }.toTypedArray()
-        AlertDialog.Builder(this).setTitle("Вкладки — натисніть для переходу")
-            .setItems(names) { _, index ->
-                if (activeTab in tabUrls.indices) tabUrls[activeTab] = web.url ?: tabUrls[activeTab]
-                activeTab = index; navigate(tabUrls[index])
-            }.setNeutralButton("Закрити вкладку") { _, _ ->
-                if (tabUrls.size > 1) { tabUrls.removeAt(activeTab.coerceIn(tabUrls.indices))
-                    activeTab = (activeTab - 1).coerceAtLeast(0); navigate(tabUrls[activeTab]) }
-            }.setPositiveButton("+ Нова") { _, _ -> newTab() }
-            .setNegativeButton("Скасувати", null).show()
+        if (tabUrls.isEmpty()) tabUrls.add(homeTab)
+        panel("Вкладки") { body ->
+            tabUrls.toList().forEachIndexed { i, url ->
+                val title = if (url == homeTab) "Головна сторінка" else Uri.parse(url).host ?: url
+                panelAction(body, "${i + 1}. $title", if (url == homeTab) "TV Light Browser" else url) {
+                    activeTab = i
+                    if (url == homeTab) showHome() else navigate(url)
+                }
+                panelAction(body, "× Закрити вкладку ${i + 1}") {
+                    if (tabUrls.size > 1) {
+                        tabUrls.removeAt(i)
+                        activeTab = (i - 1).coerceAtLeast(0)
+                        showTabs()
+                    } else {
+                        tabUrls[0] = homeTab
+                        activeTab = 0
+                        showHome()
+                    }
+                }
+            }
+            panelAction(body, "+ Нова вкладка") { newTab() }
+        }
     }
 
     private fun chooseCategory(url: String, done: () -> Unit) {
@@ -701,27 +760,37 @@ class MainActivity : Activity() {
     }
 
     private fun showCategory(i: Int) {
-        val items = entries(categoryKey(i))
-        val labels = (items.map { Uri.parse(it).host ?: it } + listOf("+ Додати сайт", "✎ Перейменувати")).toTypedArray()
-        AlertDialog.Builder(this).setTitle(categoryName(i)).setItems(labels) { _, selected ->
-            when(selected) {
-                items.size -> {
-                    val input = EditText(this).apply { hint = "https://example.com" }
-                    AlertDialog.Builder(this).setTitle("Додати сайт").setView(input)
-                        .setPositiveButton("Додати") { _, _ ->
-                            val value = input.text.toString().trim()
-                            if (value.isNotEmpty()) {
-                                val url = if (value.startsWith("http")) value else "https://$value"
-                                val saved = entries(categoryKey(i))
-                                if (!saved.contains(url)) saved.add(url)
-                                saveEntries(categoryKey(i),saved); showHome()
-                            }
-                        }.setNegativeButton("Скасувати",null).show()
-                }
-                items.size + 1 -> renameCategory(i)
-                else -> navigate(items[selected])
+        panel("Категорія: ${categoryName(i)}") { body ->
+            panelAction(body, "+ Додати сайт") {
+                val input = EditText(this).apply { hint = "https://example.com" }
+                AlertDialog.Builder(this).setTitle("Додати сайт").setView(input)
+                    .setPositiveButton("Додати") { _, _ ->
+                        val value = input.text.toString().trim()
+                        if (value.isNotEmpty()) {
+                            val url = if (value.startsWith("https://")) value else "https://$value"
+                            val saved = entries(categoryKey(i))
+                            if (!saved.contains(url)) saved.add(url)
+                            saveEntries(categoryKey(i), saved)
+                            showCategory(i)
+                        }
+                    }.setNegativeButton("Скасувати", null).show()
             }
-        }.setNegativeButton("Закрити",null).show()
+            panelAction(body, "✎ Перейменувати категорію") { renameCategory(i) }
+            entries(categoryKey(i)).forEach { url ->
+                panelAction(body, Uri.parse(url).host ?: url, url) { navigate(url) }
+                panelAction(body, "⋮ Керувати сайтом") {
+                    themedMenu("Керування сайтом", listOf(
+                        "Відкрити" to { navigate(url) },
+                        "Видалити з категорії" to {
+                            val items = entries(categoryKey(i))
+                            items.remove(url)
+                            saveEntries(categoryKey(i), items)
+                            showCategory(i)
+                        }
+                    ))
+                }
+            }
+        }
     }
 
     private fun isAdBlockActive(): Boolean {
