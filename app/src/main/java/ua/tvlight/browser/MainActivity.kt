@@ -65,6 +65,7 @@ class MainActivity : Activity() {
     private fun categoryKey(i: Int) = "category_urls_$i"
     @Volatile private var currentSiteHost: String? = null
     private var cursorMode = false
+    private val isTelevision by lazy { (resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION }
     private var cursorX = 300f
     private var cursorY = 300f
 
@@ -83,6 +84,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         adBlockEngine = AdBlockEngine(applicationContext)
+        cursorMode = isTelevision
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.BLACK)
@@ -183,7 +185,7 @@ class MainActivity : Activity() {
                 style = Paint.Style.STROKE
             }
             override fun onDraw(canvas: Canvas) {
-                if (!cursorMode) return
+                if (!cursorMode || page.visibility != View.VISIBLE) return
                 val x = cursorX.coerceIn(0f, width.toFloat())
                 val y = cursorY.coerceIn(0f, height.toFloat())
                 canvas.drawCircle(x, y, 12f * resources.displayMetrics.density, paint)
@@ -886,6 +888,9 @@ class MainActivity : Activity() {
         homePanel.visibility = View.GONE
         toolbar.visibility = if (immersive) View.GONE else View.VISIBLE
         page.visibility = View.VISIBLE
+        cursorX = (web.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels) / 2f
+        cursorY = (web.height.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels) / 2f
+        cursorOverlay.invalidate()
         if (tabUrls.isEmpty()) { tabUrls.add(url); activeTab = 0 }
         else if (activeTab in tabUrls.indices) tabUrls[activeTab] = url
         web.loadUrl(url)
@@ -902,7 +907,7 @@ class MainActivity : Activity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (cursorMode && fullscreen == null && event.action == KeyEvent.ACTION_DOWN) {
+        if (cursorMode && fullscreen == null && page.visibility == View.VISIBLE && event.action == KeyEvent.ACTION_DOWN && !address.hasFocus()) {
             val step = 28f * resources.displayMetrics.density
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_LEFT -> cursorX -= step
@@ -913,10 +918,15 @@ class MainActivity : Activity() {
                     val now = android.os.SystemClock.uptimeMillis()
                     val x = cursorX.coerceIn(0f, web.width.toFloat())
                     val y = cursorY.coerceIn(0f, web.height.toFloat())
-                    web.dispatchTouchEvent(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0))
-                    web.dispatchTouchEvent(MotionEvent.obtain(now, now + 50, MotionEvent.ACTION_UP, x, y, 0))
+                    val down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0)
+                    val up = MotionEvent.obtain(now, now + 50, MotionEvent.ACTION_UP, x, y, 0)
+                    web.dispatchTouchEvent(down)
+                    web.dispatchTouchEvent(up)
+                    down.recycle()
+                    up.recycle()
                     return true
                 }
+                KeyEvent.KEYCODE_BACK -> return super.dispatchKeyEvent(event)
                 else -> return super.dispatchKeyEvent(event)
             }
             cursorX = cursorX.coerceIn(0f, web.width.toFloat())
