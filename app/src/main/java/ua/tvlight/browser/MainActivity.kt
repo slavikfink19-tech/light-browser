@@ -68,6 +68,27 @@ class MainActivity : Activity() {
     private val isTelevision by lazy { (resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION }
     private var cursorX = 300f
     private var cursorY = 300f
+    private var scrollDirection = 0
+    private val edgeScroll = object : Runnable {
+        override fun run() {
+            if (!cursorMode || page.visibility != View.VISIBLE || fullscreen != null || scrollDirection == 0) return
+            val dy = dp(16) * scrollDirection
+            web.scrollBy(0, dy)
+            cursorOverlay.postDelayed(this, 35L)
+        }
+    }
+    private fun updateEdgeScroll() {
+        cursorOverlay.removeCallbacks(edgeScroll)
+        val margin = dp(28).toFloat()
+        scrollDirection = when {
+            !cursorMode || page.visibility != View.VISIBLE -> 0
+            cursorY <= margin -> -1
+            cursorY >= web.height - margin -> 1
+            else -> 0
+        }
+        if (scrollDirection != 0) cursorOverlay.post(edgeScroll)
+    }
+
 
     private val prefs by lazy { getSharedPreferences("browser", Context.MODE_PRIVATE) }
     private val blockedHosts = setOf(
@@ -677,7 +698,7 @@ class MainActivity : Activity() {
                 else window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
             },
             "⊕ Курсор Android TV" to {
-                cursorMode = !cursorMode; cursorOverlay.invalidate()
+                cursorMode = !cursorMode; cursorOverlay.invalidate(); updateEdgeScroll()
                 notifyUser(if (cursorMode) "Курсор увімкнено" else "Курсор вимкнено")
             },
             "⚙ Налаштування" to { showMenu() }
@@ -906,6 +927,7 @@ class MainActivity : Activity() {
         cursorX = (web.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels) / 2f
         cursorY = (web.height.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels) / 2f
         cursorOverlay.invalidate()
+        updateEdgeScroll()
         if (tabUrls.isEmpty()) { tabUrls.add(url); activeTab = 0 }
         else if (activeTab in tabUrls.indices) tabUrls[activeTab] = url
         web.loadUrl(url)
@@ -937,11 +959,11 @@ class MainActivity : Activity() {
                 }
                 KeyEvent.KEYCODE_DPAD_UP -> {
                     cursorY = (cursorY - step).coerceAtLeast(0f)
-                    if (cursorY <= edge) web.scrollBy(0, -dp(140))
+                    
                 }
                 KeyEvent.KEYCODE_DPAD_DOWN -> {
                     cursorY = (cursorY + step).coerceAtMost(web.height.toFloat())
-                    if (cursorY >= web.height - edge) web.scrollBy(0, dp(140))
+                    
                 }
                 KeyEvent.KEYCODE_PAGE_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN ->
                     web.scrollBy(0, (web.height * 0.8f).toInt())
@@ -964,6 +986,7 @@ class MainActivity : Activity() {
                 else -> return super.dispatchKeyEvent(event)
             }
             cursorOverlay.invalidate()
+            updateEdgeScroll()
             return true
         }
         return super.dispatchKeyEvent(event)
@@ -979,6 +1002,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         closeFullscreen()
+        cursorOverlay.removeCallbacks(edgeScroll)
         web.stopLoading()
         web.webChromeClient = null
         web.webViewClient = WebViewClient()
