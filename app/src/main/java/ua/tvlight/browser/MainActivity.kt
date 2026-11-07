@@ -22,6 +22,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebResourceError
 import android.app.AlertDialog
 import android.content.Context
 import android.webkit.CookieManager
@@ -55,7 +56,11 @@ class MainActivity : Activity() {
         "doubleclick.net", "googlesyndication.com", "googleadservices.com",
         "adnxs.com", "taboola.com", "outbrain.com", "popads.net",
         "adsrvr.org", "criteo.com", "scorecardresearch.com", "pubmatic.com",
-        "rubiconproject.com", "openx.net", "smartadserver.com"
+        "rubiconproject.com", "openx.net", "smartadserver.com",
+        "beton.ua", "beton.com.ua", "exoclick.com", "exosrv.com", "trafficjunky.net",
+        "propellerads.com", "onclickads.net", "adsterra.com", "hilltopads.net",
+        "bidgear.com", "mgid.com", "revcontent.com", "popcash.net",
+        "juicyads.com", "clickadu.com", "ad-maven.com", "adcash.com"
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -127,11 +132,12 @@ class MainActivity : Activity() {
         web.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 address.setText(url ?: "")
+                if (isAdBlockActive()) applyCosmeticFilters()
                 if (!url.isNullOrBlank() && url.startsWith("https://")) addHistory(url)
             }
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                 val host = request?.url?.host?.lowercase(Locale.ROOT) ?: return null
-                if (prefs.getBoolean("adblock", true) && blockedHosts.any { host == it || host.endsWith(".$it") }) {
+                if (isAdBlockActive() && blockedHosts.any { host == it || host.endsWith(".$it") }) {
                     return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0)))
                 }
                 return null
@@ -336,7 +342,7 @@ class MainActivity : Activity() {
     private fun showHistory() = showEntries("history", "Історія")
 
     private fun showMenu() {
-        val options = arrayOf(if (prefs.getBoolean("adblock", true)) "AdBlock: увімкнено (натисни, щоб вимкнути)" else "AdBlock: вимкнено (натисни, щоб увімкнути)", "Зробити стартовою", "Очистити кеш", "Очистити історію", "Очистити cookies", "Очистити закладки")
+        val options = arrayOf(if (prefs.getBoolean("adblock", true)) "AdBlock: увімкнено (натисни, щоб вимкнути)" else "AdBlock: вимкнено (натисни, щоб увімкнути)", "Рівень блокування: " + if (prefs.getBoolean("adblock_strong", false)) "посилений" else "стандартний", "Винятки AdBlock для сайтів", "Зробити стартовою", "Очистити кеш", "Очистити історію", "Очистити cookies", "Очистити закладки")
         AlertDialog.Builder(this).setTitle("Налаштування")
             .setItems(options) { _, index ->
                 when (index) {
@@ -346,13 +352,62 @@ class MainActivity : Activity() {
                         Toast.makeText(this, if (next) "AdBlock увімкнено" else "AdBlock вимкнено", Toast.LENGTH_SHORT).show()
                         web.reload()
                     }
-                    1 -> prefs.edit().putString("home", web.url ?: "https://www.google.com").apply()
-                    2 -> web.clearCache(true)
-                    3 -> saveEntries("history", emptyList())
-                    4 -> CookieManager.getInstance().removeAllCookies(null)
-                    5 -> saveEntries("bookmarks", emptyList())
+                    1 -> {
+                        val strong = !prefs.getBoolean("adblock_strong", false)
+                        prefs.edit().putBoolean("adblock_strong", strong).apply()
+                        Toast.makeText(this, if (strong) "Посилене блокування" else "Стандартне блокування", Toast.LENGTH_SHORT).show()
+                        web.reload()
+                    }
+                    2 -> toggleSiteException()
+                    3 -> prefs.edit().putString("home", web.url ?: "https://www.google.com").apply()
+                    4 -> web.clearCache(true)
+                    5 -> saveEntries("history", emptyList())
+                    6 -> CookieManager.getInstance().removeAllCookies(null)
+                    7 -> saveEntries("bookmarks", emptyList())
                 }
             }.setNegativeButton("Закрити", null).show()
+    }
+
+    private fun isAdBlockActive(): Boolean {
+        if (!prefs.getBoolean("adblock", true)) return false
+        val host = Uri.parse(web.url ?: "").host?.lowercase(Locale.ROOT) ?: return true
+        return host !in entries("adblock_exceptions")
+    }
+
+    private fun toggleSiteException() {
+        val host = Uri.parse(web.url ?: "").host?.lowercase(Locale.ROOT)
+        if (host.isNullOrBlank()) {
+            Toast.makeText(this, "Спочатку відкрийте сайт", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val exceptions = entries("adblock_exceptions")
+        val added = if (exceptions.contains(host)) { exceptions.remove(host); false }
+                    else { exceptions.add(host); true }
+        saveEntries("adblock_exceptions", exceptions)
+        Toast.makeText(this, if (added) "AdBlock вимкнено для $host" else "AdBlock увімкнено для $host", Toast.LENGTH_LONG).show()
+        web.reload()
+    }
+
+    private fun applyCosmeticFilters() {
+        val selectors = mutableListOf(
+            "iframe[src*='doubleclick']", "iframe[src*='adservice']",
+            "[id^='google_ads']", ".adsbygoogle", "[data-ad-slot]",
+            "a[href*='beton.ua'] img", "a[href*='beton.com.ua'] img"
+        )
+        if (prefs.getBoolean("adblock_strong", false)) {
+            selectors.addAll(listOf(
+                "[class*='advertisement']", "[id*='advertisement']",
+                "[class*='ad-banner']", "[class*='ad_banner']",
+                "[class*='banner-ad']", "[class*='banner_ad']",
+                "[class*='popup-ad']", "[id*='popup-ad']",
+                "iframe[src*='ads']", "a[href*='beton.ua']",
+                "a[href*='beton.com.ua']"
+            ))
+        }
+        val css = selectors.joinToString(",") + "{display:none!important;visibility:hidden!important;max-height:0!important;}"
+        val script = "(function(){try{var id='tvlight-adblock-style';var el=document.getElementById(id);if(!el){el=document.createElement('style');el.id=id;(document.head||document.documentElement).appendChild(el);}el.textContent=" +
+            org.json.JSONObject.quote(css) + ";}catch(e){}})();"
+        web.evaluateJavascript(script, null)
     }
 
     private fun navigate(value: String) {
