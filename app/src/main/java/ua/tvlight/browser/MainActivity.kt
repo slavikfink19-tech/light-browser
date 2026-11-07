@@ -245,7 +245,7 @@ class MainActivity : Activity() {
         }
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         scroll.addView(content)
-        homePanel.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        homePanel.addView(scroll, LinearLayout.LayoutParams(-1, -1))
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -304,20 +304,20 @@ class MainActivity : Activity() {
             Triple("⚙\\nНалаштування", Color.rgb(26, 65, 125), { showMenu() })
         )
         val columns = if (wide) 5 else 2
-        val grid = GridLayout(this).apply {
-            columnCount = columns
-            useDefaultMargins = false
-        }
-        val width = resources.displayMetrics.widthPixels - dp(44)
-        val tileWidth = (width / columns) - dp(7)
+        val grid = GridLayout(this).apply { columnCount = columns }
+        val gap = dp(6)
+        val available = resources.displayMetrics.widthPixels - dp(32) - dp(12)
+        val tileWidth = (available / columns) - gap * 2
         tiles.forEach { (label, fill, action) ->
-            grid.addView(styledButton(label.replace("\\n", "\n"), fill, Color.rgb(50, 166, 242), action).apply {
-                textSize = if (wide) 17f else 16f
-                elevation = dp(3).toFloat()
-            }, GridLayout.LayoutParams().apply {
-                this.width = tileWidth
-                height = if (wide) dp(118) else dp(112)
-                setMargins(dp(3), dp(4), dp(3), dp(4))
+            val tile = styledButton(label.replace("\\n", "\n"), fill, Color.rgb(50, 166, 242), action).apply {
+                textSize = if (wide) 17f else 15f
+                elevation = dp(4).toFloat()
+                setShadowLayer(dp(3).toFloat(), 0f, 0f, Color.rgb(30, 130, 220))
+            }
+            grid.addView(tile, GridLayout.LayoutParams().apply {
+                width = tileWidth.coerceAtLeast(dp(110))
+                height = if (wide) dp(122) else dp(112)
+                setMargins(gap, gap, gap, gap)
             })
         }
         content.addView(grid)
