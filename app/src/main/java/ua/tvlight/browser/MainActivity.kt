@@ -4,6 +4,9 @@ import android.app.Activity
 import android.os.Bundle
 import android.graphics.Color
 import android.view.Gravity
+import android.view.MotionEvent
+import android.view.WindowManager
+import android.webkit.WebSettings
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
@@ -33,6 +36,9 @@ class MainActivity : Activity() {
     private var fullscreen: View? = null
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
     private lateinit var root: LinearLayout
+    private var cursorMode = false
+    private var cursorX = 300f
+    private var cursorY = 300f
 
     private val prefs by lazy { getSharedPreferences("browser", Context.MODE_PRIVATE) }
     private val blockedHosts = setOf(
@@ -77,6 +83,7 @@ class MainActivity : Activity() {
         tool("Закладки") { showBookmarks() }
         tool("Історія") { showHistory() }
         tool("Меню") { showMenu() }
+        tool("Курсор") { cursorMode = !cursorMode; Toast.makeText(this, if (cursorMode) "Курсор: стрілки — рух, OK — натискання" else "Звичайне керування", Toast.LENGTH_LONG).show() }
         root.addView(bar)
         root.addView(tools)
         web = WebView(this)
@@ -84,6 +91,12 @@ class MainActivity : Activity() {
         web.settings.domStorageEnabled = true
         web.settings.mediaPlaybackRequiresUserGesture = false
         web.settings.setSupportMultipleWindows(false)
+        web.settings.cacheMode = WebSettings.LOAD_DEFAULT
+        web.settings.javaScriptCanOpenWindowsAutomatically = false
+        web.settings.allowFileAccess = false
+        web.settings.allowContentAccess = false
+        web.isFocusable = true
+        web.isFocusableInTouchMode = true
         web.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 address.setText(url ?: "")
@@ -103,6 +116,7 @@ class MainActivity : Activity() {
                 fullscreen = view
                 fullscreenCallback = callback
                 root.visibility = View.GONE
+                window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
                 addContentView(view, ViewGroup.LayoutParams(-1, -1))
             }
             override fun onHideCustomView() { closeFullscreen() }
@@ -121,6 +135,7 @@ class MainActivity : Activity() {
             }
         }
         root.addView(web, LinearLayout.LayoutParams(-1, 0, 1f))
+        web.requestFocus()
         setContentView(root)
         navigate(prefs.getString("home", "https://www.google.com") ?: "https://www.google.com")
     }
@@ -129,7 +144,7 @@ class MainActivity : Activity() {
         (prefs.getString(key, "") ?: "").lines().filter { it.isNotBlank() }.toMutableList()
 
     private fun saveEntries(key: String, values: List<String>) {
-        prefs.edit().putString(key, values.take(100).joinToString("\\n")).apply()
+        prefs.edit().putString(key, values.take(100).joinToString("\n")).apply()
     }
 
     private fun addHistory(url: String) {
@@ -199,8 +214,35 @@ class MainActivity : Activity() {
         (view.parent as? ViewGroup)?.removeView(view)
         fullscreen = null
         root.visibility = View.VISIBLE
+        window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
         fullscreenCallback?.onCustomViewHidden()
         fullscreenCallback = null
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (cursorMode && fullscreen == null && event.action == KeyEvent.ACTION_DOWN) {
+            val step = 28f * resources.displayMetrics.density
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT -> cursorX -= step
+                KeyEvent.KEYCODE_DPAD_RIGHT -> cursorX += step
+                KeyEvent.KEYCODE_DPAD_UP -> cursorY -= step
+                KeyEvent.KEYCODE_DPAD_DOWN -> cursorY += step
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                    val now = android.os.SystemClock.uptimeMillis()
+                    val x = cursorX.coerceIn(0f, web.width.toFloat())
+                    val y = cursorY.coerceIn(0f, web.height.toFloat())
+                    web.dispatchTouchEvent(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0))
+                    web.dispatchTouchEvent(MotionEvent.obtain(now, now + 50, MotionEvent.ACTION_UP, x, y, 0))
+                    return true
+                }
+                else -> return super.dispatchKeyEvent(event)
+            }
+            cursorX = cursorX.coerceIn(0f, web.width.toFloat())
+            cursorY = cursorY.coerceIn(0f, web.height.toFloat())
+            web.invalidate()
+            return true
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onBackPressed() {
@@ -212,6 +254,11 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        closeFullscreen()
+        web.stopLoading()
+        web.webChromeClient = null
+        web.webViewClient = WebViewClient()
+        (web.parent as? ViewGroup)?.removeView(web)
         web.destroy()
         super.onDestroy()
     }
