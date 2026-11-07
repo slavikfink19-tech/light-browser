@@ -120,6 +120,7 @@ class MainActivity : Activity() {
         web = WebView(this)
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
+        web.settings.textZoom = prefs.getInt("zoom", 100)
         web.settings.mediaPlaybackRequiresUserGesture = false
         web.settings.setSupportMultipleWindows(false)
         web.settings.cacheMode = WebSettings.LOAD_DEFAULT
@@ -525,41 +526,87 @@ class MainActivity : Activity() {
         }
     }
 
+
     private fun showMenu() {
-        val options = arrayOf("Виняток AdBlock для поточного сайту", "Зробити стартовою",
-            "Очистити кеш", "Очистити історію", "Очистити cookies", "Очистити закладки")
-        AlertDialog.Builder(this).setTitle("Налаштування").setItems(options) { _, index ->
-            when(index) {
-                0 -> toggleSiteException()
-                1 -> prefs.edit().putString("home", web.url ?: "https://www.google.com").apply()
-                2 -> web.clearCache(true)
-                3 -> saveEntries("history", emptyList())
-                4 -> CookieManager.getInstance().removeAllCookies(null)
-                5 -> saveEntries("bookmarks", emptyList())
-            }
-        }.setNegativeButton("Закрити", null).show()
+        themedMenu("⚙ Налаштування TV Light Browser", listOf(
+            "⌂ Стартова сторінка" to { setHomePage() },
+            "⌕ Пошукова система" to { chooseSearchEngine() },
+            "▣ Масштаб сторінок" to { chooseZoom() },
+            "🛡 AdBlock — максимальний" to { themedMenu("AdBlock", listOf(
+                "Виняток для поточного сайту" to { toggleSiteException() }
+            )) },
+            "⇧ Експорт зашифрованої копії" to { exportBackup() },
+            "⇩ Імпорт зашифрованої копії" to { importBackup() },
+            "◷ Очистити історію" to { confirmClear("history", "історію") },
+            "★ Очистити закладки" to { confirmClear("bookmarks", "закладки") },
+            "◉ Очистити cookies" to { AlertDialog.Builder(this)
+                .setTitle("Очистити cookies?").setPositiveButton("Очистити") { _, _ ->
+                    CookieManager.getInstance().removeAllCookies(null); notifyUser("Cookies очищено")
+                }.setNegativeButton("Скасувати", null).show() },
+            "▤ Очистити кеш" to { web.clearCache(true); notifyUser("Кеш очищено") }
+        ))
     }
 
     private fun showBrowserMenu() {
-        val options = arrayOf("★ Зберегти сайт", "↻ Оновити", "Вкладки", "+ Нова вкладка",
-            "Закладки", "Історія", "Завантаження", if (immersive) "Вийти з повного екрана" else "Повний екран",
-            "Курсор TV", "Налаштування")
-        AlertDialog.Builder(this).setTitle("TV Light Browser").setItems(options) { _, index ->
-            when(index) {
-                0 -> bookmark()
-                1 -> web.reload()
-                2 -> showTabs()
-                3 -> newTab()
-                4 -> showBookmarks()
-                5 -> showHistory()
-                6 -> openDownloads()
-                7 -> { immersive = !immersive; toolbar.visibility = if (immersive) View.GONE else View.VISIBLE
-                    if (immersive) window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-                    else window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN) }
-                8 -> { cursorMode = !cursorMode; cursorOverlay.invalidate() }
-                9 -> showMenu()
-            }
-        }.show()
+        themedMenu("◈ TV LIGHT BROWSER", listOf(
+            "★ Зберегти сайт" to { bookmark() },
+            "↻ Оновити" to { web.reload() },
+            "▣ Вкладки" to { showTabs() },
+            "+ Нова вкладка" to { newTab() },
+            "★ Закладки" to { showBookmarks() },
+            "◷ Історія" to { showHistory() },
+            "⇩ Завантаження" to { openDownloads() },
+            "✈ Telegram Web" to { navigate("https://web.telegram.org/") },
+            (if (immersive) "□ Вийти з повного екрана" else "▣ Повний екран") to {
+                immersive = !immersive
+                toolbar.visibility = if (immersive) View.GONE else View.VISIBLE
+                if (immersive) window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+                else window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+            },
+            "⊕ Курсор Android TV" to {
+                cursorMode = !cursorMode; cursorOverlay.invalidate()
+                notifyUser(if (cursorMode) "Курсор увімкнено" else "Курсор вимкнено")
+            },
+            "⚙ Налаштування" to { showMenu() }
+        ))
+    }
+
+    private fun setHomePage() {
+        val input = EditText(this).apply {
+            setSingleLine(true)
+            setText(prefs.getString("home", "https://www.google.com"))
+        }
+        AlertDialog.Builder(this).setTitle("Стартова сторінка").setView(input)
+            .setPositiveButton("Зберегти") { _, _ ->
+                val url = input.text.toString().trim()
+                if (url.startsWith("https://")) prefs.edit().putString("home", url).apply()
+                else notifyUser("Введіть HTTPS-адресу")
+            }.setNegativeButton("Скасувати", null).show()
+    }
+
+    private fun chooseSearchEngine() {
+        val names = arrayOf("Google", "DuckDuckGo", "Bing")
+        AlertDialog.Builder(this).setTitle("Пошукова система")
+            .setSingleChoiceItems(names, prefs.getInt("search_engine", 0)) { dialog, index ->
+                prefs.edit().putInt("search_engine", index).apply(); dialog.dismiss()
+            }.setNegativeButton("Скасувати", null).show()
+    }
+
+    private fun chooseZoom() {
+        val values = intArrayOf(75, 90, 100, 110, 125, 150)
+        AlertDialog.Builder(this).setTitle("Масштаб сторінок")
+            .setSingleChoiceItems(values.map { "$it%" }.toTypedArray(),
+                values.indexOf(prefs.getInt("zoom", 100))) { dialog, index ->
+                prefs.edit().putInt("zoom", values[index]).apply()
+                web.settings.textZoom = values[index]; dialog.dismiss()
+            }.setNegativeButton("Скасувати", null).show()
+    }
+
+    private fun confirmClear(key: String, label: String) {
+        AlertDialog.Builder(this).setTitle("Очистити $label?")
+            .setMessage("Цю дію не можна скасувати.")
+            .setPositiveButton("Очистити") { _, _ -> saveEntries(key, emptyList()); notifyUser("Очищено") }
+            .setNegativeButton("Скасувати", null).show()
     }
 
     private fun newTab() {
@@ -712,7 +759,11 @@ class MainActivity : Activity() {
             input.startsWith("https://", true) -> input
             input.startsWith("http://", true) -> "https://" + input.substring(7)
             input.contains(" ") || !input.contains(".") ->
-                "https://www.google.com/search?q=" + URLEncoder.encode(input, "UTF-8")
+                (when (prefs.getInt("search_engine", 0)) {
+                    1 -> "https://duckduckgo.com/?q="
+                    2 -> "https://www.bing.com/search?q="
+                    else -> "https://www.google.com/search?q="
+                }) + URLEncoder.encode(input, "UTF-8")
             else -> "https://$input"
         }
         homePanel.visibility = View.GONE
