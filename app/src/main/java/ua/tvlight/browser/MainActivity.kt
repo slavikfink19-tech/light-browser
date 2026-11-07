@@ -49,6 +49,8 @@ class MainActivity : Activity() {
     private lateinit var address: EditText
     private var fullscreen: View? = null
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
+    private var fullscreenContainer: FrameLayout? = null
+    private var fullscreenPointer: View? = null
     private lateinit var root: LinearLayout
     private lateinit var cursorOverlay: View
     private lateinit var page: FrameLayout
@@ -160,12 +162,50 @@ class MainActivity : Activity() {
                 if (view == null || fullscreen != null) return
                 fullscreen = view
                 fullscreenCallback = callback
+                val container = FrameLayout(this@MainActivity)
+                container.setBackgroundColor(Color.BLACK)
+                container.addView(view, FrameLayout.LayoutParams(-1, -1))
+                val pointerView = object : View(this@MainActivity) {
+                    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color = Color.WHITE
+                        style = Paint.Style.FILL
+                    }
+                    private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color = Color.BLACK
+                        style = Paint.Style.STROKE
+                        strokeWidth = dp(2).toFloat()
+                    }
+                    override fun onDraw(canvas: Canvas) {
+                        if (!cursorMode) return
+                        val x = cursorX.coerceIn(0f, width.toFloat())
+                        val y = cursorY.coerceIn(0f, height.toFloat())
+                        val arrow = android.graphics.Path().apply {
+                            moveTo(x, y)
+                            lineTo(x, y + dp(14))
+                            lineTo(x + dp(4), y + dp(11))
+                            lineTo(x + dp(6), y + dp(16))
+                            lineTo(x + dp(9), y + dp(15))
+                            lineTo(x + dp(7), y + dp(9))
+                            lineTo(x + dp(12), y + dp(9))
+                            close()
+                        }
+                        canvas.drawPath(arrow, fillPaint)
+                        canvas.drawPath(arrow, borderPaint)
+                    }
+                }
+                pointerView.isClickable = false
+                pointerView.isFocusable = false
+                container.addView(pointerView, FrameLayout.LayoutParams(-1, -1))
+                fullscreenContainer = container
+                fullscreenPointer = pointerView
                 root.visibility = View.GONE
-                view.isFocusable = true
-                view.isFocusableInTouchMode = true
-                view.requestFocus()
                 window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-                addContentView(view, ViewGroup.LayoutParams(-1, -1))
+                addContentView(container, ViewGroup.LayoutParams(-1, -1))
+                container.post {
+                    cursorX = container.width / 2f
+                    cursorY = container.height / 2f
+                    pointerView.invalidate()
+                }
             }
             override fun onHideCustomView() { closeFullscreen() }
         }
@@ -949,8 +989,12 @@ class MainActivity : Activity() {
 
     private fun closeFullscreen() {
         val view = fullscreen ?: return
+        val container = fullscreenContainer
+        (container?.parent as? ViewGroup)?.removeView(container)
         (view.parent as? ViewGroup)?.removeView(view)
         fullscreen = null
+        fullscreenContainer = null
+        fullscreenPointer = null
         root.visibility = View.VISIBLE
         web.requestFocus()
         window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
@@ -959,49 +1003,54 @@ class MainActivity : Activity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (cursorMode && fullscreen == null && page.visibility == View.VISIBLE &&
-            !address.hasFocus() && event.action == KeyEvent.ACTION_DOWN) {
+        val player = fullscreen
+        val activePointer = if (player != null) fullscreenPointer else cursorOverlay
+        val target = player ?: web
+        val active = player != null || page.visibility == View.VISIBLE
+        if (cursorMode && active && (player != null || !address.hasFocus()) &&
+            event.action == KeyEvent.ACTION_DOWN) {
             val step = dp(if (event.repeatCount > 8) 58 else 30).toFloat()
             val edge = dp(20).toFloat()
+            val width = (if (player != null) fullscreenContainer?.width else web.width) ?: web.width
+            val height = (if (player != null) fullscreenContainer?.height else web.height) ?: web.height
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_LEFT -> {
                     cursorX = (cursorX - step).coerceAtLeast(0f)
-                    if (cursorX <= edge) web.scrollBy(-dp(90), 0)
+                    if (player == null && cursorX <= edge) web.scrollBy(-dp(90), 0)
                 }
                 KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    cursorX = (cursorX + step).coerceAtMost(web.width.toFloat())
-                    if (cursorX >= web.width - edge) web.scrollBy(dp(90), 0)
+                    cursorX = (cursorX + step).coerceAtMost(width.toFloat())
+                    if (player == null && cursorX >= width - edge) web.scrollBy(dp(90), 0)
                 }
-                KeyEvent.KEYCODE_DPAD_UP -> {
-                    cursorY = (cursorY - step).coerceAtLeast(0f)
-                    if (cursorY <= edge) web.scrollBy(0, -dp(110))
+                KeyEvent.KEYCODE_DPAD_UP ->
+                    { cursorY = (cursorY - step).coerceAtLeast(0f)
+                      if (player == null && cursorY <= edge) web.scrollBy(0, -dp(110)) }
+                KeyEvent.KEYCODE_DPAD_DOWN ->
+                    { cursorY = (cursorY + step).coerceAtMost(height.toFloat())
+                      if (player == null && cursorY >= height - edge) web.scrollBy(0, dp(110)) }
+                KeyEvent.KEYCODE_PAGE_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN -> {
+                    if (player == null) web.scrollBy(0, (web.height * 0.8f).toInt())
                 }
-                KeyEvent.KEYCODE_DPAD_DOWN -> {
-                    cursorY = (cursorY + step).coerceAtMost(web.height.toFloat())
-                    if (cursorY >= web.height - edge) web.scrollBy(0, dp(110))
+                KeyEvent.KEYCODE_PAGE_UP, KeyEvent.KEYCODE_CHANNEL_UP -> {
+                    if (player == null) web.scrollBy(0, -(web.height * 0.8f).toInt())
                 }
-                KeyEvent.KEYCODE_PAGE_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN ->
-                    web.scrollBy(0, (web.height * 0.8f).toInt())
-                KeyEvent.KEYCODE_PAGE_UP, KeyEvent.KEYCODE_CHANNEL_UP ->
-                    web.scrollBy(0, -(web.height * 0.8f).toInt())
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
                 KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                     if (event.repeatCount > 0) return true
                     val now = android.os.SystemClock.uptimeMillis()
-                    val x = cursorX.coerceIn(0f, web.width.toFloat())
-                    val y = cursorY.coerceIn(0f, web.height.toFloat())
+                    val x = cursorX.coerceIn(0f, width.toFloat())
+                    val y = cursorY.coerceIn(0f, height.toFloat())
                     val down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0)
                     val up = MotionEvent.obtain(now, now + 65, MotionEvent.ACTION_UP, x, y, 0)
-                    web.dispatchTouchEvent(down)
-                    web.dispatchTouchEvent(up)
+                    target.dispatchTouchEvent(down)
+                    target.dispatchTouchEvent(up)
                     down.recycle()
                     up.recycle()
                     return true
                 }
                 else -> return super.dispatchKeyEvent(event)
             }
-            cursorOverlay.invalidate()
-            updateEdgeScroll()
+            activePointer?.invalidate()
             return true
         }
         return super.dispatchKeyEvent(event)
