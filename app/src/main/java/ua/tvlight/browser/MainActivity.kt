@@ -50,6 +50,13 @@ class MainActivity : Activity() {
     private lateinit var cursorOverlay: View
     private lateinit var page: FrameLayout
     private lateinit var homePanel: LinearLayout
+    private lateinit var toolbar: LinearLayout
+    private val tabUrls = mutableListOf<String>()
+    private var activeTab = 0
+    private var immersive = false
+    private val defaultCategories = listOf("Онлайн-кінотеатри", "Аніме", "Новини", "Соцмережі", "Різне")
+    private fun categoryName(i: Int) = prefs.getString("category_name_$i", defaultCategories[i]) ?: defaultCategories[i]
+    private fun categoryKey(i: Int) = "category_urls_$i"
     @Volatile private var currentSiteHost: String? = null
     private var cursorMode = false
     private var cursorX = 300f
@@ -77,17 +84,17 @@ class MainActivity : Activity() {
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), dp(7), dp(10), dp(7))
+            setPadding(dp(4), dp(3), dp(4), dp(3))
             setBackgroundColor(Color.rgb(8, 22, 45))
         }
         fun navButton(label: String, action: () -> Unit) {
             bar.addView(styledButton(label, Color.rgb(15, 44, 79), Color.rgb(39, 111, 169), action),
-                LinearLayout.LayoutParams(dp(44), dp(43)).apply { setMargins(dp(2), 0, dp(2), 0) })
+                LinearLayout.LayoutParams(dp(35), dp(42)).apply { setMargins(dp(2), 0, dp(2), 0) })
         }
         navButton("⌂") { showHome() }
         navButton("‹") { if (web.canGoBack()) web.goBack() else showHome() }
         navButton("›") { if (web.canGoForward()) web.goForward() }
-        navButton("↻") { web.reload() }
+        
         address = EditText(this).apply {
             setSingleLine(true)
             hint = "Пошук або адреса сайту"
@@ -99,31 +106,12 @@ class MainActivity : Activity() {
             imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_GO
             setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true }
         }
-        bar.addView(address, LinearLayout.LayoutParams(0, dp(43), 1f).apply {
+        bar.addView(address, LinearLayout.LayoutParams(0, dp(42), 1f).apply {
             setMargins(dp(5), 0, dp(5), 0)
         })
-        navButton("➜") { navigate(address.text.toString()) }
-        val tools = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(dp(8), dp(4), dp(8), dp(5))
-            setBackgroundColor(Color.rgb(7, 19, 39))
-        }
-        fun tool(label: String, action: () -> Unit) {
-            tools.addView(styledButton(label, Color.rgb(12, 36, 69), Color.rgb(31, 75, 122), action),
-                LinearLayout.LayoutParams(0, dp(40), 1f).apply { setMargins(dp(2), 0, dp(2), 0) })
-        }
-        tool("★") { bookmark() }
-        tool("Закладки") { showBookmarks() }
-        tool("Історія") { showHistory() }
-        tool("⚙") { showMenu() }
-        tool("Курсор") {
-            cursorMode = !cursorMode
-            cursorOverlay.invalidate()
-            web.requestFocus()
-            Toast.makeText(this, if (cursorMode) "Курсор: стрілки — рух, OK — натискання" else "Звичайне керування", Toast.LENGTH_LONG).show()
-        }
+        navButton("⋮") { showBrowserMenu() }
+        toolbar = bar
         root.addView(bar)
-        root.addView(tools)
         web = WebView(this)
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
@@ -143,12 +131,13 @@ class MainActivity : Activity() {
             }
             override fun onPageFinished(view: WebView?, url: String?) {
                 address.setText(url ?: "")
+                if (!url.isNullOrBlank() && tabUrls.isNotEmpty() && activeTab in tabUrls.indices) tabUrls[activeTab] = url
                 if (isAdBlockActive()) applyCosmeticFilters()
                 if (!url.isNullOrBlank() && url.startsWith("https://")) addHistory(url)
             }
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                 if (isAdBlockActive() && adBlockEngine.shouldBlock(
-                        request, currentSiteHost, prefs.getBoolean("adblock_strong", false))) {
+                        request, currentSiteHost, true)) {
                     return adBlockEngine.emptyResponse()
                 }
                 return null
@@ -232,8 +221,7 @@ class MainActivity : Activity() {
         }
 
     private fun showHome() {
-        root.getChildAt(0).visibility = View.GONE
-        root.getChildAt(1).visibility = View.GONE
+        toolbar.visibility = View.GONE
         page.visibility = View.GONE
         homePanel.visibility = View.VISIBLE
         homePanel.removeAllViews()
@@ -297,13 +285,10 @@ class MainActivity : Activity() {
             })
         }
         heading("Швидкий доступ")
-        val tiles = listOf(
-            Triple("▣\\nФільми", Color.rgb(78, 28, 137), { showEntries("bookmarks", "Сайти для фільмів") }),
-            Triple("▤\\nСеріали", Color.rgb(8, 77, 142), { showEntries("bookmarks", "Сайти для серіалів") }),
-            Triple("▣\\nТБ онлайн", Color.rgb(6, 100, 79), { showEntries("bookmarks", "ТБ-закладки") }),
-            Triple("⇩\\nЗавантаження", Color.rgb(130, 88, 15), { openDownloads() }),
-            Triple("⚙\\nНалаштування", Color.rgb(26, 65, 125), { showMenu() })
-        )
+        val tiles = defaultCategories.indices.map { i ->
+            Triple(categoryName(i), listOf(Color.rgb(78,28,137),Color.rgb(8,77,142),Color.rgb(6,100,79),Color.rgb(130,88,15),Color.rgb(26,65,125))[i],
+                { showCategory(i) })
+        }
         val columns = if (wide) 5 else 2
         val grid = GridLayout(this).apply { columnCount = columns }
         val gap = dp(6)
@@ -315,6 +300,7 @@ class MainActivity : Activity() {
                 elevation = dp(4).toFloat()
                 setShadowLayer(dp(3).toFloat(), 0f, 0f, Color.rgb(30, 130, 220))
             }
+            tile.setOnLongClickListener { renameCategory(tiles.indexOfFirst { it.first == label }); true }
             grid.addView(tile, GridLayout.LayoutParams().apply {
                 width = tileWidth.coerceAtLeast(dp(110))
                 height = if (wide) dp(122) else dp(112)
@@ -354,7 +340,7 @@ class MainActivity : Activity() {
                     val items = entries("bookmarks")
                     if (!items.contains(url)) items.add(0, url)
                     saveEntries("bookmarks", items)
-                    showHome()
+                    chooseCategory(url) { showHome() }
                 }
             }.setNegativeButton("Скасувати", null).show()
     }
@@ -386,7 +372,7 @@ class MainActivity : Activity() {
         val items = entries("bookmarks")
         if (!items.contains(url)) items.add(0, url)
         saveEntries("bookmarks", items)
-        Toast.makeText(this, "Додано в закладки", Toast.LENGTH_SHORT).show()
+        chooseCategory(url) {}
     }
 
     private fun showEntries(key: String, title: String) {
@@ -404,34 +390,110 @@ class MainActivity : Activity() {
     private fun showHistory() = showEntries("history", "Історія")
 
     private fun showMenu() {
-        val options = arrayOf(if (prefs.getBoolean("adblock", true)) "AdBlock: увімкнено (натисни, щоб вимкнути)" else "AdBlock: вимкнено (натисни, щоб увімкнути)", "Рівень блокування: " + if (prefs.getBoolean("adblock_strong", false)) "посилений" else "стандартний", "Винятки AdBlock для сайтів", "Зробити стартовою", "Очистити кеш", "Очистити історію", "Очистити cookies", "Очистити закладки")
-        AlertDialog.Builder(this).setTitle("Налаштування")
-            .setItems(options) { _, index ->
-                when (index) {
-                    0 -> {
-                        val next = !prefs.getBoolean("adblock", true)
-                        prefs.edit().putBoolean("adblock", next).apply()
-                        Toast.makeText(this, if (next) "AdBlock увімкнено" else "AdBlock вимкнено", Toast.LENGTH_SHORT).show()
-                        web.reload()
-                    }
-                    1 -> {
-                        val strong = !prefs.getBoolean("adblock_strong", false)
-                        prefs.edit().putBoolean("adblock_strong", strong).apply()
-                        Toast.makeText(this, if (strong) "Посилене блокування" else "Стандартне блокування", Toast.LENGTH_SHORT).show()
-                        web.reload()
-                    }
-                    2 -> toggleSiteException()
-                    3 -> prefs.edit().putString("home", web.url ?: "https://www.google.com").apply()
-                    4 -> web.clearCache(true)
-                    5 -> saveEntries("history", emptyList())
-                    6 -> CookieManager.getInstance().removeAllCookies(null)
-                    7 -> saveEntries("bookmarks", emptyList())
+        val options = arrayOf("Виняток AdBlock для поточного сайту", "Зробити стартовою",
+            "Очистити кеш", "Очистити історію", "Очистити cookies", "Очистити закладки")
+        AlertDialog.Builder(this).setTitle("Налаштування").setItems(options) { _, index ->
+            when(index) {
+                0 -> toggleSiteException()
+                1 -> prefs.edit().putString("home", web.url ?: "https://www.google.com").apply()
+                2 -> web.clearCache(true)
+                3 -> saveEntries("history", emptyList())
+                4 -> CookieManager.getInstance().removeAllCookies(null)
+                5 -> saveEntries("bookmarks", emptyList())
+            }
+        }.setNegativeButton("Закрити", null).show()
+    }
+
+    private fun showBrowserMenu() {
+        val options = arrayOf("★ Зберегти сайт", "↻ Оновити", "Вкладки", "+ Нова вкладка",
+            "Закладки", "Історія", "Завантаження", if (immersive) "Вийти з повного екрана" else "Повний екран",
+            "Курсор TV", "Налаштування")
+        AlertDialog.Builder(this).setTitle("TV Light Browser").setItems(options) { _, index ->
+            when(index) {
+                0 -> bookmark()
+                1 -> web.reload()
+                2 -> showTabs()
+                3 -> newTab()
+                4 -> showBookmarks()
+                5 -> showHistory()
+                6 -> openDownloads()
+                7 -> { immersive = !immersive; toolbar.visibility = if (immersive) View.GONE else View.VISIBLE
+                    if (immersive) window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+                    else window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN) }
+                8 -> { cursorMode = !cursorMode; cursorOverlay.invalidate() }
+                9 -> showMenu()
+            }
+        }.show()
+    }
+
+    private fun newTab() {
+        if (tabUrls.isEmpty()) tabUrls.add(web.url ?: "https://www.google.com")
+        else if (activeTab in tabUrls.indices) tabUrls[activeTab] = web.url ?: tabUrls[activeTab]
+        tabUrls.add("https://www.google.com")
+        activeTab = tabUrls.lastIndex
+        navigate(tabUrls[activeTab])
+    }
+
+    private fun showTabs() {
+        if (tabUrls.isEmpty()) tabUrls.add(web.url ?: "https://www.google.com")
+        val names = tabUrls.mapIndexed { i, url -> "${i+1}. ${Uri.parse(url).host ?: url}" }.toTypedArray()
+        AlertDialog.Builder(this).setTitle("Вкладки — натисніть для переходу")
+            .setItems(names) { _, index ->
+                if (activeTab in tabUrls.indices) tabUrls[activeTab] = web.url ?: tabUrls[activeTab]
+                activeTab = index; navigate(tabUrls[index])
+            }.setNeutralButton("Закрити вкладку") { _, _ ->
+                if (tabUrls.size > 1) { tabUrls.removeAt(activeTab.coerceIn(tabUrls.indices))
+                    activeTab = (activeTab - 1).coerceAtLeast(0); navigate(tabUrls[activeTab]) }
+            }.setPositiveButton("+ Нова") { _, _ -> newTab() }
+            .setNegativeButton("Скасувати", null).show()
+    }
+
+    private fun chooseCategory(url: String, done: () -> Unit) {
+        AlertDialog.Builder(this).setTitle("Додати до швидкого доступу")
+            .setItems(defaultCategories.indices.map { categoryName(it) }.toTypedArray()) { _, i ->
+                val items = entries(categoryKey(i))
+                if (!items.contains(url)) items.add(0,url)
+                saveEntries(categoryKey(i),items)
+                Toast.makeText(this, "Збережено: ${categoryName(i)}", Toast.LENGTH_SHORT).show()
+                done()
+            }.setNegativeButton("Лише закладки") { _, _ -> done() }.show()
+    }
+
+    private fun renameCategory(i: Int) {
+        if (i !in defaultCategories.indices) return
+        val input = EditText(this).apply { setText(categoryName(i)); selectAll() }
+        AlertDialog.Builder(this).setTitle("Перейменувати категорію").setView(input)
+            .setPositiveButton("Зберегти") { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.isNotEmpty()) { prefs.edit().putString("category_name_$i", name).apply(); showHome() }
+            }.setNegativeButton("Скасувати", null).show()
+    }
+
+    private fun showCategory(i: Int) {
+        val items = entries(categoryKey(i))
+        val labels = (items.map { Uri.parse(it).host ?: it } + listOf("+ Додати сайт", "✎ Перейменувати")).toTypedArray()
+        AlertDialog.Builder(this).setTitle(categoryName(i)).setItems(labels) { _, selected ->
+            when(selected) {
+                items.size -> {
+                    val input = EditText(this).apply { hint = "https://example.com" }
+                    AlertDialog.Builder(this).setTitle("Додати сайт").setView(input)
+                        .setPositiveButton("Додати") { _, _ ->
+                            val value = input.text.toString().trim()
+                            if (value.isNotEmpty()) {
+                                val url = if (value.startsWith("http")) value else "https://$value"
+                                val saved = entries(categoryKey(i))
+                                if (!saved.contains(url)) saved.add(url)
+                                saveEntries(categoryKey(i),saved); showHome()
+                            }
+                        }.setNegativeButton("Скасувати",null).show()
                 }
-            }.setNegativeButton("Закрити", null).show()
+                items.size + 1 -> renameCategory(i)
+                else -> navigate(items[selected])
+            }
+        }.setNegativeButton("Закрити",null).show()
     }
 
     private fun isAdBlockActive(): Boolean {
-        if (!prefs.getBoolean("adblock", true)) return false
         val host = currentSiteHost ?: return true
         return host !in entries("adblock_exceptions")
     }
@@ -459,7 +521,7 @@ class MainActivity : Activity() {
             "a[href*='beton.ua']", "a[href*='beton.com.ua']",
             "a[href*='cosmolot']", "a[href*='cosmo-lot']"
         )
-        if (prefs.getBoolean("adblock_strong", false)) {
+        if (true) {
             selectors.addAll(listOf(
                 "[class*='advertisement']", "[id*='advertisement']",
                 "[class*='ad_banner']", "[class*='banner_ad']",
@@ -518,9 +580,10 @@ class MainActivity : Activity() {
             else -> "https://$input"
         }
         homePanel.visibility = View.GONE
-        root.getChildAt(0).visibility = View.VISIBLE
-        root.getChildAt(1).visibility = View.VISIBLE
+        toolbar.visibility = if (immersive) View.GONE else View.VISIBLE
         page.visibility = View.VISIBLE
+        if (tabUrls.isEmpty()) { tabUrls.add(url); activeTab = 0 }
+        else if (activeTab in tabUrls.indices) tabUrls[activeTab] = url
         web.loadUrl(url)
     }
 
