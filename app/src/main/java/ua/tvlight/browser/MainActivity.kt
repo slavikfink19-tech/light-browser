@@ -427,7 +427,7 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this).setTitle(title).setView(input)
             .setPositiveButton("Продовжити") { _, _ ->
                 val pass = input.text.toString().toCharArray()
-                if (pass.size < 8) { pass.fill('\\u0000'); notifyUser("Пароль закороткий") }
+                if (pass.size < 8) { pass.fill(0.toChar()); notifyUser("Пароль закороткий") }
                 else action(pass)
             }.setNegativeButton("Скасувати", null).show()
     }
@@ -452,13 +452,13 @@ class MainActivity : Activity() {
                     putExtra(Intent.EXTRA_TITLE, "TVLight-backup.tvlb")
                 }, 9101)
             } catch (_: Exception) { pendingBackup = null; notifyUser("Помилка експорту") }
-            finally { pass.fill('\\u0000') }
+            finally { pass.fill(0.toChar()) }
         }
     }
 
     private fun importBackup() {
         passwordPrompt("Відновити зашифровану копію") { pass ->
-            pendingImportPassword?.fill('\\u0000')
+            pendingImportPassword?.fill(0.toChar())
             pendingImportPassword = pass
             try {
                 startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -466,7 +466,7 @@ class MainActivity : Activity() {
                     type = "*/*"
                 }, 9102)
             } catch (_: Exception) {
-                pendingImportPassword?.fill('\\u0000')
+                pendingImportPassword?.fill(0.toChar())
                 pendingImportPassword = null
                 notifyUser("Помилка вибору файлу")
             }
@@ -522,7 +522,7 @@ class MainActivity : Activity() {
                     notifyUser("Копію відновлено")
                 }
             } catch (_: Exception) { notifyUser("Невірний пароль або пошкоджений файл") }
-            finally { pass?.fill('\\u0000') }
+            finally { pass?.fill(0.toChar()) }
         }
     }
 
